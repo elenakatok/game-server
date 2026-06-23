@@ -64,6 +64,10 @@ export interface GameDefinition {
   /** Secret Manager secret ID for the classroom callback (e.g. 'winemaster_v1'). */
   classroom: { callbackSecretId: string }
 
+  // ── deployment ────────────────────────────────────────────────────────────
+  /** Allowed CORS origins for the game's Cloud Functions (e.g. ['https://winemaster.mygames.live']). */
+  corsOrigins: string[]
+
   // ── dashboard (UI only — type refined in @mygames/game-ui at BU-1) ────────
   dashboardColumns?: unknown
 }

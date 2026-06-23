@@ -11,3 +11,7 @@ export { verifyClassroomToken, type ClassroomTokenPayload } from './auth/verifyT
 export { verifyFirebaseToken } from './auth/verifyFirebaseToken'
 export { extractStudentIds, type MinimalResponse } from './auth/studentAuth'
 export { extractInstructorGameId } from './auth/instructorAuth'
+
+export { makeGetInstructorSession } from './session/makeGetInstructorSession'
+export { makeGetRoster, mapParticipant, mapGroup, type ParticipantRow, type GroupRow } from './roster/makeGetRoster'
+export { makeSyncRoster } from './roster/makeSyncRoster'
