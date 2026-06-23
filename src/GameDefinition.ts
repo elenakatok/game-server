@@ -39,8 +39,11 @@ export interface GameDefinition {
   scoreSense: Record<RoleKey, 'value' | 'cost'>
   /** Players per role in a base group (e.g. { wm: 2, hb: 2 }). */
   composition: Record<RoleKey, number>
-  /** distribute-extras ceiling per role; set large to mean "no cap". */
-  perRoleCap: number
+  /**
+   * distribute-extras ceiling per role per group.
+   * Absent → factory uses eligible.length at runtime ("no cap" — place every extra).
+   */
+  perRoleCap?: number
 
   // ── outcome & scoring ─────────────────────────────────────────────────────
   outcomeSchema: OutcomeSchema
@@ -63,6 +66,11 @@ export interface GameDefinition {
   // ── classroom contract ────────────────────────────────────────────────────
   /** Secret Manager secret ID for the classroom callback (e.g. 'winemaster_v1'). */
   classroom: { callbackSecretId: string }
+  /**
+   * Number of failed confirmation rounds before a group is declared deadlocked.
+   * Absent → factory defaults to 5.
+   */
+  deadlockThreshold?: number
 
   // ── deployment ────────────────────────────────────────────────────────────
   /** Allowed CORS origins for the game's Cloud Functions (e.g. ['https://winemaster.mygames.live']). */

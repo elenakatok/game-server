@@ -17,8 +17,16 @@ export { makeGetInstructorSession } from './session/makeGetInstructorSession'
 export { makeGetRoster, mapParticipant, mapGroup, type ParticipantRow, type GroupRow } from './roster/makeGetRoster'
 export { makeSyncRoster } from './roster/makeSyncRoster'
 
+export { dispatchResults, reportResult, type GameResult, type PushSummary, type FailedPush } from './classroom/reportResult'
+
 export { makeAssignRole } from './join/makeAssignRole'
 export { makeCompletePrep } from './join/makeCompletePrep'
 export { makeConfirmReady } from './join/makeConfirmReady'
 export { makeGenerateAttendanceCode } from './join/makeGenerateAttendanceCode'
 export { makeVerifyAttendanceCode } from './join/makeVerifyAttendanceCode'
+
+export { makeTriggerMatching } from './flow/makeTriggerMatching'
+export { makeSubmitLeadOutcome } from './flow/makeSubmitLeadOutcome'
+export { makeSubmitConfirmation } from './flow/makeSubmitConfirmation'
+export { makeFinalizeInstance, buildScoringRecord, type CompletedGroup } from './flow/makeFinalizeInstance'
+export { makePushResultsToClassroom } from './flow/makePushResultsToClassroom'
