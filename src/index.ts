@@ -33,6 +33,7 @@ export {
   parsePrepTextQuestions,
   mergeWithDefaults,
   validateQuestionSemantics,
+  validateKCGate,
 } from './config/prepTextQuestions'
 export { readConfigField, validateWriteField } from './config/configField'
 

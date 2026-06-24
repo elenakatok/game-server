@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { HttpsError } from 'firebase-functions/v2/https'
-import { parsePrepTextQuestions, mergeWithDefaults, validateQuestionSemantics } from '../../src/config/prepTextQuestions'
+import { parsePrepTextQuestions, mergeWithDefaults, validateQuestionSemantics, validateKCGate } from '../../src/config/prepTextQuestions'
 import { readConfigField, validateWriteField } from '../../src/config/configField'
 import { extractInstructorGameId } from '../../src/auth/instructorAuth'
 import type { PrepTextQuestion, ConfigFieldDef } from '../../src/GameDefinition'
@@ -323,6 +323,76 @@ describe('validateQuestionSemantics', () => {
       options: [{ value: 'a', label: 'A' }],
     }
     expect(validateQuestionSemantics([q])).toBeNull()
+  })
+})
+
+// ── validateKCGate ────────────────────────────────────────────────────────────
+
+const GATE_Q = (role: string): PrepTextQuestion => ({
+  field: `kc_gate_${role}`, type: 'mc', system: true,
+  category: 'knowledge_check', format: 'multiple_choice',
+  grading: 'assigned_role', role_target: role,
+  prompt: 'What is your role?', placeholder: '', order: 0, hidden: false, deletable: false,
+  options: [{ value: role, label: role }],
+})
+
+const GATE_ALL: PrepTextQuestion = {
+  field: 'kc_gate_all', type: 'mc', system: true,
+  category: 'knowledge_check', format: 'multiple_choice',
+  grading: 'assigned_role', role_target: 'all',
+  prompt: 'What is your role?', placeholder: '', order: 0, hidden: false, deletable: false,
+  options: [{ value: 'r1', label: 'R1' }, { value: 'r2', label: 'R2' }],
+}
+
+describe('validateKCGate', () => {
+  it('passes when each role has its own gate question', () => {
+    const qs = [GATE_Q('winemaster'), GATE_Q('home_base')]
+    expect(validateKCGate(['winemaster', 'home_base'], qs)).toBeNull()
+  })
+
+  it('passes when a single role_target:all gate covers all roles', () => {
+    expect(validateKCGate(['winemaster', 'home_base'], [GATE_ALL])).toBeNull()
+  })
+
+  it('passes for a single-role game with one gate', () => {
+    expect(validateKCGate(['seller'], [GATE_Q('seller')])).toBeNull()
+  })
+
+  it('passes for an empty role list (edge case — no roles to validate)', () => {
+    expect(validateKCGate([], [])).toBeNull()
+  })
+
+  it('fails when a role has no gate question', () => {
+    const qs = [GATE_Q('winemaster')]
+    const err = validateKCGate(['winemaster', 'home_base'], qs)
+    expect(err).not.toBeNull()
+    expect(err).toMatch(/home_base/)
+  })
+
+  it('fails when gate question is missing for all roles', () => {
+    expect(validateKCGate(['r1', 'r2'], [])).not.toBeNull()
+  })
+
+  it('fails when a role is covered by two gate questions', () => {
+    const qs = [GATE_Q('winemaster'), GATE_ALL]
+    const err = validateKCGate(['winemaster', 'home_base'], qs)
+    expect(err).not.toBeNull()
+    expect(err).toMatch(/2/)
+  })
+
+  it('ignores non-system assigned_role questions — only system:true count as gate', () => {
+    const nonSystemGate: PrepTextQuestion = { ...GATE_Q('winemaster'), system: false }
+    const err = validateKCGate(['winemaster'], [nonSystemGate])
+    expect(err).not.toBeNull()
+    expect(err).toMatch(/winemaster/)
+  })
+
+  it('ignores static-graded questions when checking gate coverage', () => {
+    const staticQ: PrepTextQuestion = {
+      ...GATE_Q('winemaster'), grading: 'static', correct_value: 'winemaster',
+    }
+    const err = validateKCGate(['winemaster'], [staticQ])
+    expect(err).not.toBeNull()
   })
 })
 

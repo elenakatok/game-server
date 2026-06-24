@@ -126,6 +126,26 @@ export function mergeWithDefaults(
   return result.sort((a, b) => a.order - b.order)
 }
 
+/**
+ * Verifies that every role in `roles` is covered by exactly one KC gate question
+ * (system: true, grading: 'assigned_role') in `questions`.
+ * A gate with role_target 'all' covers every role.
+ * Returns an error string on the first violation, or null if all roles are covered.
+ */
+export function validateKCGate(roles: string[], questions: PrepTextQuestion[]): string | null {
+  const gates = questions.filter(q => q.system && q.grading === 'assigned_role')
+  for (const role of roles) {
+    const covering = gates.filter(q => q.role_target === role || q.role_target === 'all')
+    if (covering.length === 0) {
+      return `Role '${role}' has no KC gate question (system:true, grading:'assigned_role') in prepDefaults`
+    }
+    if (covering.length > 1) {
+      return `Role '${role}' is covered by ${covering.length} KC gate questions — must have exactly 1`
+    }
+  }
+  return null
+}
+
 /** Returns an error string on the first violated grading constraint, or null if all pass. */
 export function validateQuestionSemantics(questions: PrepTextQuestion[]): string | null {
   for (const q of questions) {
