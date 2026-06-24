@@ -37,6 +37,12 @@ export {
 } from './config/prepTextQuestions'
 export { readConfigField, validateWriteField } from './config/configField'
 
+export { djb2Hash, seededShuffle } from './kc/shuffle'
+export { calcKCScore } from './kc/calcKCScore'
+export { makeGetStudentPrepQuestions } from './kc/makeGetStudentPrepQuestions'
+export { makeSubmitKnowledgeCheck } from './kc/makeSubmitKnowledgeCheck'
+export { makeSubmitStaticKnowledgeCheckQuestion } from './kc/makeSubmitStaticKnowledgeCheckQuestion'
+
 export { makeTriggerMatching } from './flow/makeTriggerMatching'
 export { makeSubmitLeadOutcome } from './flow/makeSubmitLeadOutcome'
 export { makeSubmitConfirmation } from './flow/makeSubmitConfirmation'
