@@ -21,7 +21,8 @@ export function readConfigField(field: ConfigFieldDef, stored: unknown): string 
       ) ? stored : field.default
 
     case 'url':
-      return typeof stored === 'string' ? stored : field.default
+      // Empty string is treated as "not set" — blank cannot mask a declared default.
+      return (typeof stored === 'string' && stored !== '') ? stored : field.default
   }
 }
 

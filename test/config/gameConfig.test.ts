@@ -53,17 +53,46 @@ describe('readConfigField — positiveInt', () => {
 describe('readConfigField — url', () => {
   const field: ConfigFieldDef = { key: 'public_info_url', kind: 'url', default: '/role-info/public.pdf' }
 
-  it('returns stored URL string', () => {
+  it('returns stored non-empty URL path', () => {
     expect(readConfigField(field, '/my-path/file.pdf')).toBe('/my-path/file.pdf')
   })
-  it('returns stored empty string (intentionally unset)', () => {
-    expect(readConfigField(field, '')).toBe('')
+  it('returns stored non-empty https URL', () => {
+    expect(readConfigField(field, 'https://dropbox.com/file.pdf')).toBe('https://dropbox.com/file.pdf')
   })
-  it('returns default for undefined', () => {
+  it('returns default for undefined (never stored)', () => {
     expect(readConfigField(field, undefined)).toBe('/role-info/public.pdf')
   })
   it('returns default for non-string', () => {
     expect(readConfigField(field, 42)).toBe('/role-info/public.pdf')
+  })
+  // Blank-masking fix: empty string is "not set", not an intentional override.
+  // A blank save (e.g. race condition before defaults load) cannot permanently mask the default.
+  it('treats stored "" as not-set — returns default, not blank', () => {
+    expect(readConfigField(field, '')).toBe('/role-info/public.pdf')
+  })
+  it('field with default "" and stored "" still returns "" (blank default, blank stored — consistent)', () => {
+    const emptyDefault: ConfigFieldDef = { key: 'optional_url', kind: 'url', default: '' }
+    expect(readConfigField(emptyDefault, '')).toBe('')
+  })
+})
+
+// Blank-masking proof: simulates the blank-save race condition scenario.
+// A save fired before getGameConfig returns writes "" for defaulted url fields.
+// After the fix, readConfigField returns the declared default — the blank cannot mask it.
+describe('readConfigField — url blank-masking proof', () => {
+  const linkField: ConfigFieldDef = { key: 'winemaster_sheet_url', kind: 'url', default: '/role-info/winemaster.pdf' }
+
+  it('fresh instance (undefined) → returns declared default path', () => {
+    expect(readConfigField(linkField, undefined)).toBe('/role-info/winemaster.pdf')
+  })
+  it('blank-saved ("") → returns declared default path, not blank', () => {
+    expect(readConfigField(linkField, '')).toBe('/role-info/winemaster.pdf')
+  })
+  it('instructor override → stored non-empty path returned as-is', () => {
+    expect(readConfigField(linkField, 'https://dropbox.com/wm-role.pdf')).toBe('https://dropbox.com/wm-role.pdf')
+  })
+  it('site-relative override → stored as-is', () => {
+    expect(readConfigField(linkField, '/custom/winemaster.pdf')).toBe('/custom/winemaster.pdf')
   })
 })
 
