@@ -31,6 +31,38 @@ export type PrepQuestion = {
   order?: number
 }
 
+/**
+ * Full runtime shape of a prep/KC question stored in config/main.
+ * TODO BU-3: relocate to @mygames/game-engine once the KC flow is extracted.
+ */
+export type PrepTextQuestion = {
+  field:       string
+  type:        'text' | 'number' | 'mc'
+  system:      boolean
+  prompt:      string
+  placeholder: string
+  order:       number
+  hidden:      boolean
+  deletable:   boolean
+  options?:    MCOption[]
+  category:    'knowledge_check' | 'preparation' | 'debrief'
+  format:      'multiple_choice' | 'number' | 'text'
+  grading?:    'static' | 'assigned_role'
+  correct_value?: string
+  /** 'all' = every role; any other string = a specific role key. Legacy 'both' normalised to 'all' on parse. */
+  role_target: string
+  explanation?: string
+}
+
+/**
+ * Declares a single editable field in game_instances/{id}/config/main.
+ * The factory reads/writes/validates each field according to its declared kind.
+ */
+export type ConfigFieldDef =
+  | { key: string; kind: 'string';      default: string }
+  | { key: string; kind: 'positiveInt'; default: number }
+  | { key: string; kind: 'url';         default: string }
+
 export interface GameDefinition {
   // ── identity & roles ──────────────────────────────────────────────────────
   game_id: string
@@ -75,6 +107,20 @@ export interface GameDefinition {
   // ── deployment ────────────────────────────────────────────────────────────
   /** Allowed CORS origins for the game's Cloud Functions (e.g. ['https://winemaster.mygames.live']). */
   corsOrigins: string[]
+
+  // ── settings (BU-S2) ─────────────────────────────────────────────────────
+  /**
+   * Declares the game-specific config fields the Settings page can read and write.
+   * Absent → only prep_text_questions is served by makeGetGameConfig / makeUpdateGameConfig.
+   */
+  configFields?: ConfigFieldDef[]
+
+  /**
+   * Default + system prep/KC questions for instances with no stored prep_text_questions yet.
+   * Questions with system:true are re-injected on every read even if missing from the stored list.
+   * Absent → no defaults are injected; the stored array is returned as-is.
+   */
+  prepDefaults?: PrepTextQuestion[]
 
   // ── dashboard (UI only — type refined in @mygames/game-ui at BU-1) ────────
   dashboardColumns?: unknown

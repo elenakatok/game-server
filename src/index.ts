@@ -4,6 +4,8 @@ export type {
   MCOption,
   KCQuestion,
   PrepQuestion,
+  PrepTextQuestion,
+  ConfigFieldDef,
 } from './GameDefinition'
 
 export { CLASSROOM_PUBLIC_KEY_PEM } from './auth/classroomPublicKey'
@@ -24,6 +26,15 @@ export { makeCompletePrep } from './join/makeCompletePrep'
 export { makeConfirmReady } from './join/makeConfirmReady'
 export { makeGenerateAttendanceCode } from './join/makeGenerateAttendanceCode'
 export { makeVerifyAttendanceCode } from './join/makeVerifyAttendanceCode'
+
+export { makeGetGameConfig } from './config/makeGetGameConfig'
+export { makeUpdateGameConfig } from './config/makeUpdateGameConfig'
+export {
+  parsePrepTextQuestions,
+  mergeWithDefaults,
+  validateQuestionSemantics,
+} from './config/prepTextQuestions'
+export { readConfigField, validateWriteField } from './config/configField'
 
 export { makeTriggerMatching } from './flow/makeTriggerMatching'
 export { makeSubmitLeadOutcome } from './flow/makeSubmitLeadOutcome'
