@@ -22,6 +22,7 @@ export { makeSyncRoster } from './roster/makeSyncRoster'
 export { dispatchResults, reportResult, type GameResult, type PushSummary, type FailedPush } from './classroom/reportResult'
 
 export { makeAssignRole } from './join/makeAssignRole'
+export { makeGetInfoUrls } from './join/makeGetInfoUrls'
 export { makeCompletePrep } from './join/makeCompletePrep'
 export { makeConfirmReady } from './join/makeConfirmReady'
 export { makeGenerateAttendanceCode } from './join/makeGenerateAttendanceCode'

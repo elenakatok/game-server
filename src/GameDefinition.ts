@@ -126,6 +126,20 @@ export interface GameDefinition {
    */
   prepDefaults?: PrepTextQuestion[]
 
+  // ── student info page (BU-2b) ─────────────────────────────────────────────
+  /**
+   * Per-role info link declarations for the student info page.
+   * Each entry maps a role key to its list of links; link keys must appear in configFields.
+   * Used by makeGetInfoUrls to return only the student's own role's URLs (never the other roles').
+   */
+  roleInfoLinks?: Array<{ roleKey: string; links: Array<{ key: string; label: string }> }>
+
+  /**
+   * Config key for the shared public info URL shown to all roles on the info page.
+   * Absent → no public link section is rendered. The key must appear in configFields.
+   */
+  publicInfoLinkKey?: string
+
   // ── dashboard (UI only — type refined in @mygames/game-ui at BU-1) ────────
   dashboardColumns?: unknown
 }
