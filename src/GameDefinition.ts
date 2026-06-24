@@ -79,8 +79,12 @@ export interface GameDefinition {
 
   // ── outcome & scoring ─────────────────────────────────────────────────────
   outcomeSchema: OutcomeSchema
-  /** The only bespoke function each game supplies. null outcome = walk-away (returns 0). */
-  computeRawScore: (role: RoleKey, outcome: Outcome | null) => number
+  /**
+   * The only bespoke function each game supplies. null outcome = walk-away (returns 0).
+   * configData: the current contents of config/main (may be empty on first run).
+   * The factory reads config/main before calling this, then passes it via the scorer closure.
+   */
+  computeRawScore: (role: RoleKey, outcome: Outcome | null, configData?: Record<string, unknown>) => number
   /** Walk-away reservation values per role (surplus games only, e.g. Winemaster). */
   reservations?: Record<RoleKey, number>
 

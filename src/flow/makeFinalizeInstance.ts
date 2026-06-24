@@ -96,8 +96,12 @@ export function makeFinalizeInstance(def: GameDefinition) {
         })
       }
 
-      // 2. Read all participants.
-      const participantsSnap = await instanceRef.collection('participants').get()
+      // 2. Read all participants + config (config feeds reservation prices into scoring).
+      const [participantsSnap, configSnap] = await Promise.all([
+        instanceRef.collection('participants').get(),
+        instanceRef.collection('config').doc('main').get(),
+      ])
+      const configData = (configSnap.data() ?? {}) as Record<string, unknown>
 
       // 3. First pass: build ScoringRecord[] for role-bearing participants.
       const records: ScoringRecord[] = []
@@ -112,7 +116,9 @@ export function makeFinalizeInstance(def: GameDefinition) {
 
       // 4. Normalize: game-engine handles per-role pools, sample SD (÷N−1), cost-sense
       //    negation, no_show → −2, late → null, walk-away pool inclusion.
-      const finalized = computeZScoresByRole(records, def.roles, def.scoreSense, def.computeRawScore)
+      //    Wrap computeRawScore to thread configData through without changing game-engine types.
+      const scorer = (role: string, outcome: Outcome | null) => def.computeRawScore(role, outcome, configData)
+      const finalized = computeZScoresByRole(records, def.roles, def.scoreSense, scorer)
 
       // 5. Write scores for role-bearing participants.
       const now = FieldValue.serverTimestamp()
