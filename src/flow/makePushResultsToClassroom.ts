@@ -42,6 +42,8 @@ export function makePushResultsToClassroom(def: GameDefinition) {
       const callbackSecret =
         (devBody?.['callback_secret'] as string | undefined) ?? process.env.CLASSROOM_CALLBACK_SECRET ?? ''
 
+      console.log('[push] callbackUrl:', callbackUrl || '(empty)',
+        '| secretLen:', callbackSecret.length)
       if (!callbackUrl) {
         console.warn('[pushResultsToClassroom] CLASSROOM_CALLBACK_URL not configured — no-op')
         return { ok: true as const, total: 0, succeeded: 0, failed: [] }
@@ -82,6 +84,7 @@ export function makePushResultsToClassroom(def: GameDefinition) {
         }
 
         const summary = await dispatchResults(records, callbackUrl, callbackSecret)
+        console.log('[push] summary:', JSON.stringify(summary))
         return { ok: true as const, ...summary }
       } catch (err) {
         if (err instanceof HttpsError) throw err

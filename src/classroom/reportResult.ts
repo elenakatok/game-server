@@ -89,13 +89,17 @@ async function pushWithRetry(
       await reportFn(result, callbackUrl, callbackSecret)
       return { ok: true }
     } catch (err) {
+      const e = err as Error & { code?: string }
+      console.error('[push] attempt', attempt + 1, 'failed for', result.participant_id,
+        '| message:', e.message, '| code:', e.code ?? '(none)', '| stack:', e.stack ?? '(none)')
       if (!isRetryable(err)) {
-        return { ok: false, reason: err instanceof Error ? err.message : String(err) }
+        return { ok: false, reason: e.message }
       }
       lastErr = err
     }
   }
-  return { ok: false, reason: lastErr instanceof Error ? lastErr.message : String(lastErr) }
+  const e = lastErr as Error & { code?: string }
+  return { ok: false, reason: e instanceof Error ? e.message : String(lastErr) }
 }
 
 /**
