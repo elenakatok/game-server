@@ -1,6 +1,6 @@
 {
   "name": "@mygames/game-server",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "private": true,
   "description": "Shared Cloud Function logic for mygames.live negotiation games",
   "main": "dist/index.js",

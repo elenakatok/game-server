@@ -16,6 +16,7 @@ export type ParticipantRow = {
   finalized: boolean
   has_prep_completed: boolean
   is_late: boolean
+  raw_score: number | null
 }
 
 export type GroupRow = {
@@ -52,6 +53,7 @@ export function mapParticipant(
     finalized: data['finalized_at'] != null,
     has_prep_completed: data['prep_completed_at'] != null,
     is_late: data['participant_late'] === true,
+    raw_score: typeof data['raw_score'] === 'number' ? data['raw_score'] : null,
   }
 }
 
