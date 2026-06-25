@@ -120,15 +120,26 @@ export function makeFinalizeInstance(def: GameDefinition) {
       const scorer = (role: string, outcome: Outcome | null) => def.computeRawScore(role, outcome, configData)
       const finalized = computeZScoresByRole(records, def.roles, def.scoreSense, scorer)
 
+      // Build lookup for games that provide computeScoreBreakdown (stores value_or_cost).
+      const recordMap = def.computeScoreBreakdown
+        ? new Map(records.map(r => [r.participant_id, r]))
+        : null
+
       // 5. Write scores for role-bearing participants.
+      //    When the game provides computeScoreBreakdown, also store value_or_cost (pure addition).
       const now = FieldValue.serverTimestamp()
       const batch = db.batch()
       for (const f of finalized) {
+        const rec = recordMap?.get(f.participant_id)
+        const breakdown = (def.computeScoreBreakdown && rec)
+          ? def.computeScoreBreakdown(rec.role, rec.outcome, configData)
+          : null
         batch.update(instanceRef.collection('participants').doc(f.participant_id), {
           raw_score: f.raw_score,
           normalized_score: f.normalized_score,
           knowledge_check_score: f.knowledge_check_score,
           finalized_at: now,
+          ...(breakdown !== null ? { value_or_cost: breakdown.value_or_cost } : {}),
         })
       }
 

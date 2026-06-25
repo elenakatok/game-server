@@ -85,6 +85,12 @@ export interface GameDefinition {
    * The factory reads config/main before calling this, then passes it via the scorer closure.
    */
   computeRawScore: (role: RoleKey, outcome: Outcome | null, configData?: Record<string, unknown>) => number
+  /**
+   * Optional breakdown of the scoring intermediate.
+   * When present, makeFinalizeInstance additionally writes `value_or_cost` to each participant doc.
+   * Absent → finalization is byte-for-byte identical to the existing behavior (backwards-compatible).
+   */
+  computeScoreBreakdown?: (role: RoleKey, outcome: Outcome | null, configData?: Record<string, unknown>) => { value_or_cost: number; raw_score: number }
   /** Walk-away reservation values per role (surplus games only, e.g. Winemaster). */
   reservations?: Record<RoleKey, number>
 
