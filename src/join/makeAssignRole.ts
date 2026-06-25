@@ -5,13 +5,25 @@ import { roleKeys } from '@mygames/game-engine'
 import { verifyClassroomToken } from '../auth/verifyToken'
 import type { GameDefinition } from '../GameDefinition'
 
-/** Pure balance helper — exported for unit testing. */
-export function pickRole(keys: string[], counts: Record<string, number>): string {
-  let minRole = keys[0]
-  let minCount = counts[keys[0]] ?? 0
+/**
+ * Pure balance helper — exported for unit testing.
+ *
+ * Picks the role whose current count is furthest below its share of the target
+ * composition. Comparison is fill-fraction: counts[key] / (composition[key] ?? 1).
+ * For symmetric games every composition value is 1, so the fraction equals the
+ * raw count — identical to the previous behaviour byte-for-byte.
+ * On ties, picks the first declared role (stable, same as before).
+ */
+export function pickRole(
+  keys: string[],
+  counts: Record<string, number>,
+  composition: Record<string, number> = {},
+): string {
+  let minRole  = keys[0]
+  let minRatio = (counts[keys[0]] ?? 0) / (composition[keys[0]] ?? 1)
   for (const key of keys.slice(1)) {
-    const c = counts[key] ?? 0
-    if (c < minCount) { minRole = key; minCount = c }
+    const ratio = (counts[key] ?? 0) / (composition[key] ?? 1)
+    if (ratio < minRatio) { minRole = key; minRatio = ratio }
   }
   return minRole
 }
@@ -20,6 +32,7 @@ async function doAssignRole(
   gameInstanceId: string,
   participantId: string,
   roleKeyList: string[],
+  composition: Record<string, number>,
   displayName?: string,
 ): Promise<string> {
   const db = admin.firestore()
@@ -40,7 +53,7 @@ async function doAssignRole(
     if (existing?.role) return existing.role as string
 
     const counts = (countsSnap.data() ?? {}) as Record<string, number>
-    const role = pickRole(roleKeyList, counts)
+    const role = pickRole(roleKeyList, counts, composition)
     const now = FieldValue.serverTimestamp()
 
     if (participantSnap.exists) {
@@ -72,7 +85,8 @@ async function doAssignRole(
  * Returns: { ok: true, role, customToken, participant_id, game_instance_id }
  */
 export function makeAssignRole(def: GameDefinition) {
-  const roleKeyList = roleKeys(def.roles)
+  const roleKeyList  = roleKeys(def.roles)
+  const composition  = def.composition
   return onCall({ cors: def.corsOrigins }, async (request) => {
     const data = request.data as Record<string, unknown>
     const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true'
@@ -104,7 +118,7 @@ export function makeAssignRole(def: GameDefinition) {
     }
 
     try {
-      const role = await doAssignRole(gameInstanceId, participantId, roleKeyList, displayName)
+      const role = await doAssignRole(gameInstanceId, participantId, roleKeyList, composition, displayName)
       const customToken = await admin.auth().createCustomToken(participantId, {
         game_instance_id: gameInstanceId,
       })
