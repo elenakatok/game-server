@@ -48,7 +48,7 @@ export async function reportResult(
         headers: {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(body),
-          Authorization: `Bearer ${callbackSecret}`,
+          Authorization: `Bearer ${callbackSecret.trim()}`,
         },
       },
       (res) => {
