@@ -20,6 +20,7 @@ async function doAssignRole(
   gameInstanceId: string,
   participantId: string,
   roleKeyList: string[],
+  displayName?: string,
 ): Promise<string> {
   const db = admin.firestore()
   const participantRef = db
@@ -51,6 +52,7 @@ async function doAssignRole(
         role,
         role_assigned_at: now,
         prep_status: 'not_started',
+        ...(displayName ? { display_name: displayName } : {}),
       })
     }
     tx.set(countsRef, { [role]: (counts[role] ?? 0) + 1 }, { merge: true })
@@ -77,6 +79,7 @@ export function makeAssignRole(def: GameDefinition) {
 
     let participantId: string
     let gameInstanceId: string
+    let displayName: string | undefined
 
     if (isEmulator && data._test != null) {
       const test = data._test as Record<string, unknown>
@@ -91,8 +94,9 @@ export function makeAssignRole(def: GameDefinition) {
       }
       try {
         const payload = verifyClassroomToken(data.token)
-        participantId = payload.participant_id
+        participantId  = payload.participant_id
         gameInstanceId = payload.game_instance_id
+        displayName    = payload.name
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Invalid token'
         throw new HttpsError('unauthenticated', message)
@@ -100,7 +104,7 @@ export function makeAssignRole(def: GameDefinition) {
     }
 
     try {
-      const role = await doAssignRole(gameInstanceId, participantId, roleKeyList)
+      const role = await doAssignRole(gameInstanceId, participantId, roleKeyList, displayName)
       const customToken = await admin.auth().createCustomToken(participantId, {
         game_instance_id: gameInstanceId,
       })
