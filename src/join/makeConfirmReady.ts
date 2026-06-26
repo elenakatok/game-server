@@ -13,9 +13,6 @@ async function markReadyConfirmed(gameInstanceId: string, participantId: string)
   if (!snap.exists) throw new HttpsError('not-found', 'Participant not found.')
 
   const data = snap.data()!
-  if (data.prep_status !== 'complete') {
-    throw new HttpsError('failed-precondition', 'Preparation not complete.')
-  }
   if (data.confirmed_ready_at != null) return
 
   await ref.update({ confirmed_ready_at: FieldValue.serverTimestamp() })
@@ -23,7 +20,7 @@ async function markReadyConfirmed(gameInstanceId: string, participantId: string)
 
 /**
  * Returns an onCall function that records a participant's readiness for live session.
- * Requires prep_status === 'complete'. Idempotent.
+ * Idempotent.
  * This is the gate verifyAttendanceCode requires.
  *
  * Call data (emulator): { _test: { participant_id, game_instance_id } }
