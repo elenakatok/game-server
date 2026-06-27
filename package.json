@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@mygames/game-engine": "git+https://github.com/elenakatok/game-engine.git#v0.2.0",
+    "@mygames/game-engine": "git+https://github.com/elenakatok/game-engine.git#v0.3.0",
     "jsonwebtoken": "^9.0.3"
   },
   "peerDependencies": {
