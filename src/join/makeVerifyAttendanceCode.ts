@@ -57,7 +57,7 @@ async function doVerifyAttendanceCode(
   await admin.database()
     .ref(`attending/${gameInstanceId}/${participantId}`)
     .set({
-      display_name: pdata.display_name ?? '',
+      display_name: (pdata.display_name as string | undefined) ?? (pdata.name as string | undefined) ?? '',
       role: pdata.role ?? '',
       confirmed_at: Date.now(),
     })
