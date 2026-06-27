@@ -1,7 +1,7 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https'
 import { defineSecret } from 'firebase-functions/params'
 import * as admin from 'firebase-admin'
-import { roleKeys } from '@mygames/game-engine'
+import { isValidRole } from '@mygames/game-engine'
 import { extractInstructorGameId } from '../auth/instructorAuth'
 import { dispatchResults, type GameResult } from '../classroom/reportResult'
 import type { GameDefinition } from '../GameDefinition'
@@ -24,7 +24,6 @@ const classroomCallbackSecret = defineSecret('CLASSROOM_CALLBACK_SECRET')
  * Returns: { ok: true, total, succeeded, failed: [{ participant_id, reason }] }
  */
 export function makePushResultsToClassroom(def: GameDefinition) {
-  const VALID_ROLES = new Set(roleKeys(def.roles))
   return onCall(
     { cors: def.corsOrigins, secrets: [classroomCallbackSecret] },
     async (request) => {
@@ -61,18 +60,18 @@ export function makePushResultsToClassroom(def: GameDefinition) {
         for (const doc of snap.docs) {
           const d = doc.data()
 
-          // Only push participants that have been through finalizeInstance.
+          // Gate ONLY on finalized_at — never drop on role. Every participant
+          // finalizeInstance wrote is pushed, so the −2 no-shows always reach the gradebook.
           if (d['finalized_at'] == null) continue
 
-          // Skip participants with an unrecognised NON-null role (instructors, legacy data).
-          // Roleless participants (role == null) are kept: these are the no-show absents
-          // that finalize marks with normalized_score −2 — they MUST reach the gradebook.
-          // (Mirrors grays' own push gate, which gates on finalized_at, not on role.)
-          const role = d['role'] as string | null
-          if (role != null && !VALID_ROLES.has(role)) continue
+          // Normalize the role with the SAME predicate finalize uses: a valid game role
+          // is kept; anything else (null, '', or an unrecognised string — instructors,
+          // legacy data, never-joined absents) becomes a role:null no-show.
+          const rawRole = d['role']
+          const role = typeof rawRole === 'string' && isValidRole(def.roles, rawRole) ? rawRole : null
 
-          // no_show participants have raw_score: null (set by computeZScoresByRole).
-          // Walk-aways have a raw_score → 'completed'.
+          // no_show participants have raw_score: null (set by computeZScoresByRole /
+          // the finalize floor pass). Walk-aways / completed have a raw_score.
           const status: GameResult['status'] = d['raw_score'] != null ? 'completed' : 'no_show'
 
           records.push({

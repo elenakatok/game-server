@@ -1,7 +1,7 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https'
 import * as admin from 'firebase-admin'
 import { FieldValue } from 'firebase-admin/firestore'
-import { computeZScoresByRole, type ScoringRecord, type Outcome } from '@mygames/game-engine'
+import { computeZScoresByRole, isValidRole, type ScoringRecord, type Outcome } from '@mygames/game-engine'
 import { extractInstructorGameId } from '../auth/instructorAuth'
 import type { GameDefinition } from '../GameDefinition'
 
@@ -143,11 +143,18 @@ export function makeFinalizeInstance(def: GameDefinition) {
         })
       }
 
-      // 6. Second pass: roleless participants (enrolled but never joined).
-      //    Excluded from z-score math; receive the −2 floor marker so the push includes them.
+      // 6. Second pass: participants WITHOUT a valid game role — enrolled but never
+      //    joined, or any null / empty-string / unrecognised role. Excluded from z-score
+      //    math; receive the −2 floor marker so the push includes them. Same predicate
+      //    (isValidRole) the push uses, so a −2 written here always reaches the gradebook.
+      //    Skip docs already written in the scoring pass above (a non-null invalid role
+      //    can land there) — Firestore rejects two writes to one doc in a single batch.
+      const scoredIds = new Set(finalized.map((f) => f.participant_id))
       let noRoleCount = 0
       for (const pdoc of participantsSnap.docs) {
-        if (pdoc.data()['role']) continue
+        if (scoredIds.has(pdoc.id)) continue
+        const role = pdoc.data()['role']
+        if (typeof role === 'string' && isValidRole(def.roles, role)) continue
         batch.update(
           instanceRef.collection('participants').doc(pdoc.id),
           { raw_score: null, normalized_score: -2, finalized_at: now },
