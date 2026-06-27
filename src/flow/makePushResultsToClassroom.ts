@@ -64,9 +64,12 @@ export function makePushResultsToClassroom(def: GameDefinition) {
           // Only push participants that have been through finalizeInstance.
           if (d['finalized_at'] == null) continue
 
-          // Skip participants with unrecognised roles (instructors, legacy data, etc.).
+          // Skip participants with an unrecognised NON-null role (instructors, legacy data).
+          // Roleless participants (role == null) are kept: these are the no-show absents
+          // that finalize marks with normalized_score −2 — they MUST reach the gradebook.
+          // (Mirrors grays' own push gate, which gates on finalized_at, not on role.)
           const role = d['role'] as string | null
-          if (role == null || !VALID_ROLES.has(role)) continue
+          if (role != null && !VALID_ROLES.has(role)) continue
 
           // no_show participants have raw_score: null (set by computeZScoresByRole).
           // Walk-aways have a raw_score → 'completed'.
