@@ -4,6 +4,8 @@ import { FieldValue } from 'firebase-admin/firestore'
 import {
   applyApproval,
   resolveStatus,
+  roleKeys,
+  fieldFor,
   type ApprovalDecision,
   type ApprovalState,
 } from '@mygames/game-engine'
@@ -54,6 +56,9 @@ export function makeSubmitConfirmation(def: GameDefinition) {
       const groupRef = instanceRef.collection('groups').doc(pdata['group_id'] as string)
 
       let txOutcome = 'waiting'
+      // Captured when the group locks — used for the post-transaction raw_score write.
+      let txLockedOutcome: Record<string, unknown> | null = null
+      let txLockedParticipants: Array<{ participantId: string; role: string }> = []
 
       // All state reads, logic, and writes inside the transaction — concurrent approvals serialised.
       await db.runTransaction(async (tx) => {
@@ -94,6 +99,12 @@ export function makeSubmitConfirmation(def: GameDefinition) {
             confirmations: newState.confirmations,
           })
           txOutcome = 'locked'
+          // Capture for the post-transaction raw_score write.
+          txLockedOutcome = leadOutcome
+          for (const roleKey of roleKeys(def.roles)) {
+            const pids = (gdata[fieldFor(roleKey, 'participants')] ?? []) as string[]
+            for (const pid of pids) txLockedParticipants.push({ participantId: pid, role: roleKey })
+          }
         } else if (resolution === 'reset') {
           const resetCount = ((gdata['reset_count'] as number | undefined) ?? 0) + 1
           if (resetCount >= deadlockAt) {
@@ -121,6 +132,27 @@ export function makeSubmitConfirmation(def: GameDefinition) {
           txOutcome = 'waiting'
         }
       })
+
+      // Write raw_score to each group member immediately after the group locks.
+      // Best-effort: failure here doesn't roll back the confirmed outcome.
+      // Finalize will recompute the same value (idempotent) and add z-scores unchanged.
+      if (txOutcome === 'locked' && txLockedParticipants.length > 0) {
+        try {
+          const configSnap = await instanceRef.collection('config').doc('main').get()
+          const configData = (configSnap.data() ?? {}) as Record<string, unknown>
+          const scoreBatch = db.batch()
+          for (const { participantId: pid, role } of txLockedParticipants) {
+            const rawScore = def.computeRawScore(role, txLockedOutcome, configData)
+            scoreBatch.update(
+              instanceRef.collection('participants').doc(pid),
+              { raw_score: rawScore },
+            )
+          }
+          await scoreBatch.commit()
+        } catch (err) {
+          console.error('[submitConfirmation] raw_score early write failed (non-fatal):', err)
+        }
+      }
 
       return { ok: true as const, outcome: txOutcome }
     } catch (err) {
