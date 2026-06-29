@@ -1,9 +1,25 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https'
+import { defineSecret } from 'firebase-functions/params'
 import * as admin from 'firebase-admin'
 import { FieldValue } from 'firebase-admin/firestore'
 import { computeZScoresByRole, isValidRole, type ScoringRecord, type Outcome } from '@mygames/game-engine'
 import { extractInstructorGameId } from '../auth/instructorAuth'
+import { dispatchResults, toGameResult, type GameResult, type PushSummary } from '../classroom/reportResult'
 import type { GameDefinition } from '../GameDefinition'
+
+// All games store the classroom callback secret under this name in their own project.
+// Registered at module load so the Firebase CLI provisions it for finalizeInstance —
+// finalize now dispatches results itself (see Fix 1), so it needs the secret too.
+const classroomCallbackSecret = defineSecret('CLASSROOM_CALLBACK_SECRET')
+
+/** Resolves the classroom callback URL + secret (prod env, with emulator _dev override). */
+function resolveCallbackConfig(data: Record<string, unknown>, isEmulator: boolean): { url: string; secret: string } {
+  const dev = isEmulator && data['_dev'] != null ? (data['_dev'] as Record<string, unknown>) : null
+  return {
+    url: (dev?.['callback_url'] as string | undefined) ?? process.env.CLASSROOM_CALLBACK_URL ?? '',
+    secret: (dev?.['callback_secret'] as string | undefined) ?? process.env.CLASSROOM_CALLBACK_SECRET ?? '',
+  }
+}
 
 export type CompletedGroup = {
   outcome: Outcome | null
@@ -64,16 +80,43 @@ export function buildScoringRecord(
  * Returns: { ok: true, scored: number }
  */
 export function makeFinalizeInstance(def: GameDefinition) {
-  return onCall({ cors: def.corsOrigins }, async (request) => {
+  return onCall({ cors: def.corsOrigins, secrets: [classroomCallbackSecret] }, async (request) => {
     const data = request.data as Record<string, unknown>
     const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true'
     const authHeader = request.rawRequest.headers.authorization as string | undefined
 
     const gameInstanceId = await extractInstructorGameId(data, isEmulator, authHeader)
+    const { url: callbackUrl, secret: callbackSecret } = resolveCallbackConfig(data, isEmulator)
+
+    // Pushes a record set to the classroom; no-op (succeeds) when no callback configured.
+    const push = async (records: GameResult[]): Promise<PushSummary> => {
+      if (!callbackUrl) {
+        console.warn('[finalizeInstance] CLASSROOM_CALLBACK_URL not configured — scores written, push skipped')
+        return { total: 0, succeeded: 0, failed: [] }
+      }
+      const summary = await dispatchResults(records, callbackUrl, callbackSecret)
+      console.log('[finalizeInstance] push summary:', JSON.stringify(summary))
+      return summary
+    }
 
     try {
       const db = admin.firestore()
       const instanceRef = db.collection('game_instances').doc(gameInstanceId)
+
+      // ── Fix 2: idempotency guard ────────────────────────────────────────────
+      // If already finalized, DO NOT recompute or overwrite. Re-read the settled
+      // (already-committed, no race here) scores and just re-DELIVER them to the
+      // gradebook — so a re-click recovers from a failed push without ever changing
+      // a grade. Returns reFinalized:true so the caller can distinguish.
+      const instanceSnap = await instanceRef.get()
+      if (instanceSnap.exists && instanceSnap.data()?.['finalized_at'] != null) {
+        const settled = await instanceRef.collection('participants').get()
+        const records = settled.docs
+          .filter(d => d.data()['finalized_at'] != null)
+          .map(d => toGameResult(gameInstanceId, d.id, d.data(), def.roles))
+        const summary = await push(records)
+        return { ok: true as const, scored: records.length, reFinalized: true as const, push: summary }
+      }
 
       // 1. Read all groups; guard: every group must be status:'completed'.
       const groupsSnap = await instanceRef.collection('groups').get()
@@ -150,7 +193,7 @@ export function makeFinalizeInstance(def: GameDefinition) {
       //    Skip docs already written in the scoring pass above (a non-null invalid role
       //    can land there) — Firestore rejects two writes to one doc in a single batch.
       const scoredIds = new Set(finalized.map((f) => f.participant_id))
-      let noRoleCount = 0
+      const rolelessPids: string[] = []
       for (const pdoc of participantsSnap.docs) {
         if (scoredIds.has(pdoc.id)) continue
         const role = pdoc.data()['role']
@@ -159,11 +202,41 @@ export function makeFinalizeInstance(def: GameDefinition) {
           instanceRef.collection('participants').doc(pdoc.id),
           { raw_score: null, normalized_score: -2, finalized_at: now },
         )
-        noRoleCount++
+        rolelessPids.push(pdoc.id)
       }
 
+      // Instance-level finalized marker — the idempotency guard (Fix 2) and the
+      // dashboard's server-derived "✓ Finalized" state (Fix 3) both read this.
+      batch.set(instanceRef, { finalized_at: now, finalized: true }, { merge: true })
+
       await batch.commit()
-      return { ok: true as const, scored: finalized.length + noRoleCount }
+
+      // ── Fix 1: push the records we JUST computed — NO re-read, no visibility race.
+      // Build the exact same payload pushResultsToClassroom would (via toGameResult),
+      // but from the in-memory computed scores + the docs already in hand. Every
+      // finalized participant (incl. roleless −2 no-shows) is included.
+      const computed = new Map<string, Record<string, unknown>>()
+      for (const f of finalized) {
+        computed.set(f.participant_id, {
+          raw_score: f.raw_score,
+          normalized_score: f.normalized_score,
+          knowledge_check_score: f.knowledge_check_score,
+        })
+      }
+      for (const pid of rolelessPids) {
+        const doc = participantsSnap.docs.find(d => d.id === pid)
+        computed.set(pid, {
+          raw_score: null,
+          normalized_score: -2,
+          knowledge_check_score: (doc?.data()['knowledge_check_score'] ?? null) as number | null,
+        })
+      }
+      const pushRecords: GameResult[] = participantsSnap.docs
+        .filter(d => computed.has(d.id))
+        .map(d => toGameResult(gameInstanceId, d.id, { ...d.data(), ...computed.get(d.id)! }, def.roles))
+
+      const summary = await push(pushRecords)
+      return { ok: true as const, scored: finalized.length + rolelessPids.length, push: summary }
     } catch (err) {
       if (err instanceof HttpsError) throw err
       console.error('[finalizeInstance] error:', err)

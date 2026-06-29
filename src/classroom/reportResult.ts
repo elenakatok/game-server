@@ -1,5 +1,6 @@
 import * as https from 'https'
 import * as http from 'http'
+import { isValidRole, type RoleConfig } from '@mygames/game-engine'
 
 export type GameResult = {
   game_instance_id: string
@@ -10,6 +11,36 @@ export type GameResult = {
   normalized_score: number | null
   knowledge_check_score: number | null
   details: Record<string, unknown>
+}
+
+/**
+ * Builds the classroom-bound GameResult for one participant from its score fields.
+ * SINGLE source of the push payload shape — used by BOTH finalizeInstance (from the
+ * scores it just computed, in-memory, race-free) and pushResultsToClassroom (re-read
+ * re-delivery path) so the two can never drift.
+ *
+ * Contract (unchanged): gate is the caller's (never drop on role here); role is normalised
+ * to null for any non-valid role; status = completed when raw_score present, else no_show;
+ * raw_score is intentionally NOT included in the payload (gradebook contract).
+ */
+export function toGameResult(
+  gameInstanceId: string,
+  participantId: string,
+  data: Record<string, unknown>,
+  roles: RoleConfig,
+): GameResult {
+  const rawRole = data['role']
+  const role = typeof rawRole === 'string' && isValidRole(roles, rawRole) ? rawRole : null
+  const status: GameResult['status'] = data['raw_score'] != null ? 'completed' : 'no_show'
+  return {
+    game_instance_id: gameInstanceId,
+    participant_id: participantId,
+    status,
+    role,
+    normalized_score: (data['normalized_score'] ?? null) as number | null,
+    knowledge_check_score: (data['knowledge_check_score'] ?? null) as number | null,
+    details: (data['details'] ?? {}) as Record<string, unknown>,
+  }
 }
 
 export type FailedPush = { participant_id: string; reason: string }

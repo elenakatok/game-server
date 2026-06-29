@@ -1,9 +1,8 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https'
 import { defineSecret } from 'firebase-functions/params'
 import * as admin from 'firebase-admin'
-import { isValidRole } from '@mygames/game-engine'
 import { extractInstructorGameId } from '../auth/instructorAuth'
-import { dispatchResults, type GameResult } from '../classroom/reportResult'
+import { dispatchResults, toGameResult, type GameResult } from '../classroom/reportResult'
 import type { GameDefinition } from '../GameDefinition'
 
 // Registered at module load so the Firebase CLI knows this function needs the secret.
@@ -56,33 +55,15 @@ export function makePushResultsToClassroom(def: GameDefinition) {
           .collection('participants')
           .get()
 
+        // This is the RE-DELIVERY path (manual retry / re-finalize). It re-reads because
+        // the docs are already settled here — the primary finalize→push path does NOT
+        // re-read (it dispatches the records it just computed, killing the visibility race).
         const records: GameResult[] = []
         for (const doc of snap.docs) {
           const d = doc.data()
-
-          // Gate ONLY on finalized_at — never drop on role. Every participant
-          // finalizeInstance wrote is pushed, so the −2 no-shows always reach the gradebook.
+          // Gate ONLY on finalized_at — never drop on role (no_shows/−2 still pushed).
           if (d['finalized_at'] == null) continue
-
-          // Normalize the role with the SAME predicate finalize uses: a valid game role
-          // is kept; anything else (null, '', or an unrecognised string — instructors,
-          // legacy data, never-joined absents) becomes a role:null no-show.
-          const rawRole = d['role']
-          const role = typeof rawRole === 'string' && isValidRole(def.roles, rawRole) ? rawRole : null
-
-          // no_show participants have raw_score: null (set by computeZScoresByRole /
-          // the finalize floor pass). Walk-aways / completed have a raw_score.
-          const status: GameResult['status'] = d['raw_score'] != null ? 'completed' : 'no_show'
-
-          records.push({
-            game_instance_id: gameInstanceId,
-            participant_id: doc.id,
-            status,
-            role,
-            normalized_score: (d['normalized_score'] ?? null) as number | null,
-            knowledge_check_score: (d['knowledge_check_score'] ?? null) as number | null,
-            details: (d['details'] ?? {}) as Record<string, unknown>,
-          })
+          records.push(toGameResult(gameInstanceId, doc.id, d, def.roles))
         }
 
         const summary = await dispatchResults(records, callbackUrl, callbackSecret)

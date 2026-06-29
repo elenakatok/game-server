@@ -96,11 +96,12 @@ export function makeGetRoster(def: GameDefinition) {
       const db = admin.firestore()
       const instanceRef = db.collection('game_instances').doc(gameInstanceId)
 
-      const [participantsSnap, groupsSnap, attendingSnap, attendanceCodeSnap] = await Promise.all([
+      const [participantsSnap, groupsSnap, attendingSnap, attendanceCodeSnap, instanceSnap] = await Promise.all([
         instanceRef.collection('participants').get(),
         instanceRef.collection('groups').get(),
         admin.database().ref(`attending/${gameInstanceId}`).once('value'),
         instanceRef.collection('attendance_code').doc('current').get(),
+        instanceRef.get(),
       ])
 
       const attending = (attendingSnap.val() ?? {}) as Record<
@@ -121,6 +122,9 @@ export function makeGetRoster(def: GameDefinition) {
         participants,
         groups,
         session_live: attendanceCodeSnap.exists,
+        // Server-truth finalized marker (Fix 3): survives dashboard refresh so the
+        // Finalize button stays "✓ Finalized" instead of re-enabling on reload.
+        finalized: (instanceSnap.data()?.['finalized_at'] ?? null) != null,
       }
     } catch (err) {
       console.error('[getRoster] error:', err)

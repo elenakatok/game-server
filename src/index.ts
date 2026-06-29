@@ -19,7 +19,7 @@ export { makeGetInstructorSession } from './session/makeGetInstructorSession'
 export { makeGetRoster, mapParticipant, mapGroup, type ParticipantRow, type GroupRow } from './roster/makeGetRoster'
 export { makeSyncRoster } from './roster/makeSyncRoster'
 
-export { dispatchResults, reportResult, type GameResult, type PushSummary, type FailedPush } from './classroom/reportResult'
+export { dispatchResults, reportResult, toGameResult, type GameResult, type PushSummary, type FailedPush } from './classroom/reportResult'
 
 export { makeAssignRole } from './join/makeAssignRole'
 export { makeGetInfoUrls } from './join/makeGetInfoUrls'
