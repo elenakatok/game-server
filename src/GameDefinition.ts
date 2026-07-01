@@ -76,6 +76,15 @@ export interface GameDefinition {
    * Absent → factory uses eligible.length at runtime ("no cap" — place every extra).
    */
   perRoleCap?: number
+  /**
+   * Opt-in remainder policy (Adirondacks). After all ideal base groups form, if the
+   * leftover still holds ≥ its count of EVERY named role, one alternate-composition
+   * group is pulled (at most once) before extras are absorbed. The matching guard is
+   * also relaxed so an instance that can form ONLY a remnant group (no full base group)
+   * still matches. Absent → no second-pass group; matching is unchanged.
+   * Example (Adirondacks): { composition: { gpp:1, ala:1, flp:1, fcc:1, governor:1, atb:1 } }.
+   */
+  remnantGroup?: { composition: Record<RoleKey, number> }
 
   // ── outcome & scoring ─────────────────────────────────────────────────────
   outcomeSchema: OutcomeSchema

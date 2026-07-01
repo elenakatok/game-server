@@ -84,7 +84,13 @@ export function makeTriggerMatching(def: GameDefinition) {
               Math.floor(eligible.filter(p => p.role === k).length / (def.composition[k] ?? 1))
             )
           )
-      if (baseGroupCount === 0) {
+      // Remnant fallback: even with zero full base groups, an instance with ≥1 of every
+      // remnant role can still form the single one-per-role remnant group (Adirondacks).
+      const remnantFeasible = def.remnantGroup != null &&
+        Object.entries(def.remnantGroup.composition).every(([k, c]) =>
+          eligible.filter(p => p.role === k).length >= c
+        )
+      if (baseGroupCount === 0 && !remnantFeasible) {
         throw new HttpsError(
           'failed-precondition',
           'Not enough participants to form a group (need at least one full base group of each role present).',
@@ -96,6 +102,7 @@ export function makeTriggerMatching(def: GameDefinition) {
         roleConfig: def.roles,
         composition: def.composition,
         perRoleCap: cap,
+        ...(def.remnantGroup ? { remnantGroup: def.remnantGroup } : {}),
       })
 
       // Batch: write group docs and stamp each participant with group_id and is_lead.
