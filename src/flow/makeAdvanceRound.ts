@@ -1,8 +1,19 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https'
 import * as admin from 'firebase-admin'
-import { currentRoundIndex, nextRoundIndex } from '@mygames/game-engine'
 import { extractInstructorGameId } from '../auth/instructorAuth'
 import type { GameDefinition } from '../GameDefinition'
+
+// Round-navigation math — a small self-contained mirror of @mygames/game-engine's
+// `rounds` helpers. INLINED (not imported) on purpose: importing it would give
+// game-server a build-time type dependency on a sibling git-dep's freshly-built
+// .d.ts, which the deploy's nested git-dep `prepare` step cannot reliably resolve.
+// The engine `rounds` module remains the canonical general primitive; this is a
+// two-line mirror to keep the shared packages build-time-decoupled.
+function clampRoundIndex(len: number, stored: unknown): number {
+  if (len === 0) return 0
+  const i = (typeof stored === 'number' && Number.isInteger(stored)) ? stored : 0
+  return Math.max(0, Math.min(i, len - 1))
+}
 
 /**
  * Class-level "proceed to next round" gate for a multi-round (staged) game.
@@ -41,8 +52,8 @@ export function makeAdvanceRound(def: GameDefinition) {
       ])
 
       const storedRound = instanceSnap.data()?.['current_round']
-      const currentIdx = currentRoundIndex(rounds, typeof storedRound === 'number' ? storedRound : 0)
-      const nextIdx = nextRoundIndex(rounds, currentIdx)
+      const currentIdx = clampRoundIndex(rounds.length, storedRound)
+      const nextIdx = currentIdx < rounds.length - 1 ? currentIdx + 1 : null
       if (nextIdx === null) {
         throw new HttpsError('failed-precondition', `Already at the final round (${rounds[currentIdx]}).`)
       }

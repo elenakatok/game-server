@@ -1,6 +1,6 @@
 {
   "name": "@mygames/game-server",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "description": "Shared Cloud Function logic for mygames.live negotiation games",
   "main": "dist/index.js",
@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@mygames/game-engine": "git+https://github.com/elenakatok/game-engine.git#v0.6.0",
+    "@mygames/game-engine": "git+https://github.com/elenakatok/game-engine.git#v0.5.0",
     "jsonwebtoken": "^9.0.3"
   },
   "peerDependencies": {
