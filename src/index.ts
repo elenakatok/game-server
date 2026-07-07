@@ -45,6 +45,7 @@ export { makeSubmitKnowledgeCheck } from './kc/makeSubmitKnowledgeCheck'
 export { makeSubmitStaticKnowledgeCheckQuestion } from './kc/makeSubmitStaticKnowledgeCheckQuestion'
 
 export { makeTriggerMatching } from './flow/makeTriggerMatching'
+export { makeAdvanceRound } from './flow/makeAdvanceRound'
 export { makeStartNegotiation } from './flow/makeStartNegotiation'
 export { makeSubmitLeadOutcome } from './flow/makeSubmitLeadOutcome'
 export { makeSubmitConfirmation } from './flow/makeSubmitConfirmation'

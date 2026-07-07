@@ -86,6 +86,15 @@ export interface GameDefinition {
    */
   remnantGroup?: { composition: Record<RoleKey, number> }
 
+  /**
+   * Ordered list of round ids for a multi-round (staged) game, e.g. Baxter:
+   * ['1978','1983','1985']. ABSENT → one-shot game, unchanged behavior — no round
+   * state, no proceed gate, and getRoster reports rounds:null. Declaring rounds is
+   * purely additive: it enables the class-level current_round + makeAdvanceRound
+   * proceed gate. Round 1 is the game's existing single-outcome round.
+   */
+  rounds?: string[]
+
   // ── outcome & scoring ─────────────────────────────────────────────────────
   outcomeSchema: OutcomeSchema
   /**

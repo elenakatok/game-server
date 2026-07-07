@@ -117,6 +117,13 @@ export function makeGetRoster(def: GameDefinition) {
         mapGroup(doc.id, doc.data() as Record<string, unknown>, def.roles)
       )
 
+      // Staging (opt-in): a game that declares def.rounds is multi-round. One-shot
+      // games leave rounds null and current_round 0 — the dashboard renders no round
+      // UI, behaving exactly as before.
+      const rounds = def.rounds ?? null
+      const storedRound = instanceSnap.data()?.['current_round']
+      const current_round = (typeof storedRound === 'number' && Number.isInteger(storedRound)) ? storedRound : 0
+
       return {
         ok: true as const,
         participants,
@@ -125,6 +132,9 @@ export function makeGetRoster(def: GameDefinition) {
         // Server-truth finalized marker (Fix 3): survives dashboard refresh so the
         // Finalize button stays "✓ Finalized" instead of re-enabling on reload.
         finalized: (instanceSnap.data()?.['finalized_at'] ?? null) != null,
+        // Staging state (null rounds → one-shot; dashboard shows no round UI).
+        rounds,
+        current_round,
       }
     } catch (err) {
       console.error('[getRoster] error:', err)
