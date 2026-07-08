@@ -46,6 +46,14 @@ export { makeSubmitStaticKnowledgeCheckQuestion } from './kc/makeSubmitStaticKno
 
 export { makeTriggerMatching } from './flow/makeTriggerMatching'
 export { makeAdvanceRound } from './flow/makeAdvanceRound'
+export {
+  ROUND_OUTCOMES_FIELD,
+  clampRoundIndex,
+  resolveRoundSlot,
+  getRoundOutcome,
+  setRoundOutcome,
+  type RoundSlot,
+} from './flow/roundOutcome'
 export { makeStartNegotiation } from './flow/makeStartNegotiation'
 export { makeSubmitLeadOutcome } from './flow/makeSubmitLeadOutcome'
 export { makeSubmitConfirmation } from './flow/makeSubmitConfirmation'

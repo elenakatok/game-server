@@ -10,6 +10,7 @@ import {
   type ApprovalState,
 } from '@mygames/game-engine'
 import { extractStudentOnCallIds } from '../auth/studentOnCallAuth'
+import { resolveRoundSlot, setRoundOutcome } from './roundOutcome'
 import type { GameDefinition } from '../GameDefinition'
 
 /** Pure helper — exported for unit testing. Defaults to 5 when absent. */
@@ -47,11 +48,19 @@ export function makeSubmitConfirmation(def: GameDefinition) {
       const db = admin.firestore()
       const instanceRef = db.collection('game_instances').doc(gameInstanceId)
 
-      const pSnap = await instanceRef.collection('participants').doc(participantId).get()
+      const [pSnap, instanceSnap] = await Promise.all([
+        instanceRef.collection('participants').doc(participantId).get(),
+        instanceRef.get(),
+      ])
       if (!pSnap.exists) throw new HttpsError('not-found', 'Participant not found.')
       const pdata = pSnap.data()!
       if (!pdata['group_id']) throw new HttpsError('failed-precondition', 'Not in a group.')
       if (pdata['is_lead']) throw new HttpsError('permission-denied', 'Lead uses submitLeadOutcome.')
+
+      // Which round's slot does a lock write to? One-shot games / round 1 → flat
+      // `outcome`; rounds 2+ → the keyed map. The proceed gate blocks advance until every
+      // group is 'completed', so current_round is stable across an in-progress round.
+      const roundSlot = resolveRoundSlot(def.rounds, instanceSnap.data()?.['current_round'])
 
       const groupRef = instanceRef.collection('groups').doc(pdata['group_id'] as string)
 
@@ -92,8 +101,9 @@ export function makeSubmitConfirmation(def: GameDefinition) {
         if (resolution === 'committed') {
           const leadOutcome = gdata['lead_outcome'] as Record<string, unknown> | null
           tx.update(groupRef, {
-            outcome: leadOutcome,
-            agreement_reached: leadOutcome !== null,
+            // Round-1/one-shot → flat `outcome` (+ agreement_reached), byte-identical to
+            // before; rounds 2+ → the keyed slot only, leaving round 1 intact.
+            ...setRoundOutcome(roundSlot, leadOutcome),
             status: 'completed',
             completed_at: FieldValue.serverTimestamp(),
             confirmations: newState.confirmations,

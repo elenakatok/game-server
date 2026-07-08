@@ -3,6 +3,7 @@ import * as admin from 'firebase-admin'
 import { FieldValue } from 'firebase-admin/firestore'
 import { validateOutcome } from '@mygames/game-engine'
 import { extractInstructorGameId } from '../auth/instructorAuth'
+import { resolveRoundSlot, setRoundOutcome } from './roundOutcome'
 import type { GameDefinition } from '../GameDefinition'
 
 /**
@@ -51,20 +52,24 @@ export function makeSubmitInstructorOutcome(def: GameDefinition) {
 
     try {
       const db = admin.firestore()
-      const groupRef = db
-        .collection('game_instances').doc(gameInstanceId)
-        .collection('groups').doc(groupId)
+      const instanceRef = db.collection('game_instances').doc(gameInstanceId)
+      const groupRef = instanceRef.collection('groups').doc(groupId)
 
-      const gSnap = await groupRef.get()
+      const [gSnap, instanceSnap] = await Promise.all([groupRef.get(), instanceRef.get()])
       if (!gSnap.exists) throw new HttpsError('not-found', 'Group not found.')
+      // Per-round lock: 'completed' means THIS round is resolved. advanceRound re-opens
+      // groups to 'negotiating' for the next round, so a later round records freely while
+      // the same round still cannot be re-recorded.
       if (gSnap.data()!['status'] === 'completed') {
         throw new HttpsError('failed-precondition', 'Group outcome already locked.')
       }
 
+      // Round-1/one-shot → flat `outcome`; rounds 2+ → the keyed slot (round 1 preserved).
+      const roundSlot = resolveRoundSlot(def.rounds, instanceSnap.data()?.['current_round'])
+
       await groupRef.update({
         status: 'completed',
-        outcome: finalOutcome,
-        agreement_reached: finalOutcome !== null,
+        ...setRoundOutcome(roundSlot, finalOutcome),
         completed_at: FieldValue.serverTimestamp(),
         instructor_override: true,
       })
