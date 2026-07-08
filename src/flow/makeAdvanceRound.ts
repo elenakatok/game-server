@@ -1,8 +1,8 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https'
 import * as admin from 'firebase-admin'
-import { FieldValue } from 'firebase-admin/firestore'
 import { extractInstructorGameId } from '../auth/instructorAuth'
 import { clampRoundIndex } from './roundOutcome'
+import { reopenGroupPatch } from './reopenGroup'
 import type { GameDefinition } from '../GameDefinition'
 
 // Round-navigation math lives in ./roundOutcome (clampRoundIndex) — a game-server-local
@@ -73,25 +73,13 @@ export function makeAdvanceRound(def: GameDefinition) {
       }
 
       // Advance atomically: bump the class-level round pointer AND re-open every group
-      // for the new round in a single batch. Re-open resets only the transient working
-      // fields; the round-1 flat `outcome` and the `outcomes_by_round` map are left in
-      // place so prior-round data is preserved. status:'negotiating' lets the lead report
-      // the new round (submitLeadOutcome accepts 'negotiating'); cleared lead_reported_at
-      // /confirmations/reset_count re-arm the confirmation cycle; the removed completed_at
-      // /instructor_override drop the previous round's lock so this round is unlocked while
-      // that round's outcome stays recorded in its slot.
+      // for the new round in a single batch. reopenGroupPatch (shared with Baxter's day-2
+      // Button-2 callable) resets only the transient working fields; the round-1 flat
+      // `outcome` and the `outcomes_by_round` map are left in place so prior-round data is
+      // preserved. See reopenGroup.ts for the exact fields and why.
       const batch = db.batch()
       for (const gdoc of groupsSnap.docs) {
-        batch.update(gdoc.ref, {
-          status: 'negotiating',
-          negotiation_started_at: FieldValue.serverTimestamp(),
-          lead_outcome: null,
-          lead_reported_at: null,
-          confirmations: {},
-          reset_count: 0,
-          completed_at: FieldValue.delete(),
-          instructor_override: FieldValue.delete(),
-        })
+        batch.update(gdoc.ref, reopenGroupPatch())
       }
       batch.set(instanceRef, { current_round: nextIdx }, { merge: true })
       await batch.commit()

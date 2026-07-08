@@ -60,6 +60,7 @@ export {
   setRoundOutcome,
   type RoundSlot,
 } from './flow/roundOutcome'
+export { reopenGroupPatch } from './flow/reopenGroup'
 export { makeStartNegotiation } from './flow/makeStartNegotiation'
 export { makeSubmitLeadOutcome } from './flow/makeSubmitLeadOutcome'
 export { makeSubmitConfirmation } from './flow/makeSubmitConfirmation'
