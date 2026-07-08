@@ -27,6 +27,12 @@ export { makeCompletePrep } from './join/makeCompletePrep'
 export { makeConfirmReady } from './join/makeConfirmReady'
 export { makeGenerateAttendanceCode } from './join/makeGenerateAttendanceCode'
 export { makeVerifyAttendanceCode } from './join/makeVerifyAttendanceCode'
+export {
+  ATTENDANCE_BY_ROUND_FIELD,
+  presenceAtSlot,
+  setRoundPresence,
+  getRoundPresence,
+} from './join/roundPresence'
 
 export { makeGetGameConfig } from './config/makeGetGameConfig'
 export { makeUpdateGameConfig } from './config/makeUpdateGameConfig'

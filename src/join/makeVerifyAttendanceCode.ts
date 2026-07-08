@@ -2,24 +2,31 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https'
 import * as admin from 'firebase-admin'
 import { FieldValue } from 'firebase-admin/firestore'
 import { extractStudentOnCallIds } from '../auth/studentOnCallAuth'
+import { resolveRoundSlot } from '../flow/roundOutcome'
+import { presenceAtSlot, setRoundPresence } from './roundPresence'
 import type { GameDefinition } from '../GameDefinition'
 
 async function doVerifyAttendanceCode(
+  def: GameDefinition,
   gameInstanceId: string,
   participantId: string,
   submittedCode: string,
 ): Promise<void> {
   const db = admin.firestore()
-  const participantRef = db
-    .collection('game_instances').doc(gameInstanceId)
-    .collection('participants').doc(participantId)
-  const codeRef = db
-    .collection('game_instances').doc(gameInstanceId)
-    .collection('attendance_code').doc('current')
+  const instanceRef = db.collection('game_instances').doc(gameInstanceId)
+  const participantRef = instanceRef.collection('participants').doc(participantId)
+  const codeRef = instanceRef.collection('attendance_code').doc('current')
 
-  const [participantSnap, codeSnap] = await Promise.all([
+  // Round-aware, opt-in (Slice 2.6). A staged game (def.rounds declared) resolves the
+  // CURRENT round from the instance's current_round pointer; a one-shot game skips the
+  // instance read entirely and derives to the flat round-1 slot — so its write,
+  // idempotency, and RTDB overlay stay byte-identical to pre-Slice-2.6 behaviour.
+  const isStaged = Array.isArray(def.rounds) && def.rounds.length > 0
+
+  const [participantSnap, codeSnap, instanceSnap] = await Promise.all([
     participantRef.get(),
     codeRef.get(),
+    isStaged ? instanceRef.get() : Promise.resolve(null),
   ])
 
   if (!participantSnap.exists) throw new HttpsError('not-found', 'Participant not found.')
@@ -30,8 +37,14 @@ async function doVerifyAttendanceCode(
     throw new HttpsError('failed-precondition', 'Please complete the confirmation step first.')
   }
 
-  // Idempotent: already verified.
-  if (pdata.attendance_confirmed_at != null) return
+  // resolveRoundSlot clamps a missing/garbage pointer to round 1 (flat). One-shot /
+  // current_round 0 → { kind: 'flat' } → the existing attendance_confirmed_at path.
+  const slot = resolveRoundSlot(def.rounds, instanceSnap?.data()?.['current_round'])
+
+  // Idempotent PER ROUND: already confirmed for THIS round → no-op. A round-1
+  // confirmation no longer short-circuits a rounds-2+ confirmation (the Slice 2.6 fix);
+  // for one-shot / round 1 this is the same flat guard as before.
+  if (presenceAtSlot(pdata, slot)) return
 
   if (!codeSnap.exists) {
     throw new HttpsError(
@@ -40,6 +53,9 @@ async function doVerifyAttendanceCode(
     )
   }
 
+  // The instructor regenerates the code per round (a new code overwrites
+  // attendance_code/current), so matching against the current code is correct. The
+  // code doc carries no round tag today — see the note in makeVerifyAttendanceCode.
   const storedCode = (codeSnap.data()!.code as string).toUpperCase()
   if (submittedCode.toUpperCase().trim() !== storedCode) {
     throw new HttpsError(
@@ -48,19 +64,24 @@ async function doVerifyAttendanceCode(
     )
   }
 
-  await participantRef.update({
-    attendance_confirmed_at: FieldValue.serverTimestamp(),
-  })
+  // Round-scoped presence write. Round 1 / one-shot → the existing flat
+  // attendance_confirmed_at (unchanged path); rounds 2+ → the keyed slot, leaving the
+  // round-1 flat flag and sibling rounds intact.
+  await participantRef.update(setRoundPresence(slot, FieldValue.serverTimestamp()))
 
-  // Write to RTDB so the instructor dashboard shows a real-time attendance list.
-  // This path is persistent (never deleted on disconnect).
-  await admin.database()
-    .ref(`attending/${gameInstanceId}/${participantId}`)
-    .set({
-      display_name: (pdata.display_name as string | undefined) ?? (pdata.name as string | undefined) ?? '',
-      role: pdata.role ?? '',
-      confirmed_at: Date.now(),
-    })
+  // Mirror to the RTDB attending overlay so the instructor dashboard shows a real-time
+  // attendance list. This path is persistent (never deleted on disconnect). Round 1 /
+  // one-shot writes the existing per-instance path (byte-unchanged); rounds 2+ write a
+  // per-round subtree so the future day-2 dashboard can read who was present each round.
+  const overlay = {
+    display_name: (pdata.display_name as string | undefined) ?? (pdata.name as string | undefined) ?? '',
+    role: pdata.role ?? '',
+    confirmed_at: Date.now(),
+  }
+  const overlayRef = slot.kind === 'flat'
+    ? admin.database().ref(`attending/${gameInstanceId}/${participantId}`)
+    : admin.database().ref(`attending_by_round/${gameInstanceId}/${slot.roundId}/${participantId}`)
+  await overlayRef.set(overlay)
 }
 
 /**
@@ -69,7 +90,15 @@ async function doVerifyAttendanceCode(
  * RTDB attending overlay (source for getRoster's display names and real-time list).
  *
  * Gates: participant must exist, confirmed_ready_at must be set, code must match.
- * Idempotent — re-calling after success is a no-op.
+ * Idempotent PER ROUND — re-calling after success in the same round is a no-op, but a
+ * student confirmed in round 1 can still confirm a rounds-2+ code (Slice 2.6). One-shot
+ * games (no def.rounds) behave exactly as before: a single flat attendance_confirmed_at.
+ *
+ * ROUND-TAG NOTE: the code doc (attendance_code/current) has no round tag. Matching is
+ * against whatever code is current, which is correct because the instructor regenerates
+ * the code per round (a new code overwrites current). If a future slice wants to reject a
+ * stale prior-round code even before regeneration, stamp a round id on the code doc in
+ * makeGenerateAttendanceCode and compare it here — out of scope for Slice 2.6.
  *
  * Call data (emulator): { _test: { participant_id, game_instance_id }, code: "ABCDE" }
  * Call data (production): Bearer token or { token: "<student classroom JWT>" }, code: "ABCDE"
@@ -89,7 +118,7 @@ export function makeVerifyAttendanceCode(def: GameDefinition) {
     }
 
     try {
-      await doVerifyAttendanceCode(gameInstanceId, participantId, code)
+      await doVerifyAttendanceCode(def, gameInstanceId, participantId, code)
       return { ok: true as const }
     } catch (err) {
       if (err instanceof HttpsError) throw err
