@@ -10,12 +10,29 @@ import {
   type ApprovalState,
 } from '@mygames/game-engine'
 import { extractStudentOnCallIds } from '../auth/studentOnCallAuth'
-import { resolveRoundSlot, setRoundOutcome } from './roundOutcome'
+import { resolveRoundSlot, setRoundOutcome, clampRoundIndex } from './roundOutcome'
 import type { GameDefinition } from '../GameDefinition'
 
 /** Pure helper — exported for unit testing. Defaults to 5 when absent. */
 export function resolveDeadlockThreshold(threshold: number | undefined): number {
   return threshold ?? 5
+}
+
+export type OutcomeMechanic = 'unanimous' | 'ultimatum'
+
+/**
+ * Which ratification mechanic applies to a given round (pure — exported for unit testing).
+ * Per-round override wins, then the whole-game default, then 'unanimous'. A round index is
+ * clamped defensively; a one-shot game (no rounds) always resolves the whole-game default.
+ */
+export function resolveOutcomeMechanic(def: GameDefinition, roundIdx: number): OutcomeMechanic {
+  const rounds = def.rounds
+  if (rounds && rounds.length > 0 && def.roundOutcomeMechanics) {
+    const roundId = rounds[clampRoundIndex(rounds.length, roundIdx)]
+    const override = def.roundOutcomeMechanics[roundId]
+    if (override) return override
+  }
+  return def.outcomeMechanic ?? 'unanimous'
 }
 
 /**
@@ -60,7 +77,11 @@ export function makeSubmitConfirmation(def: GameDefinition) {
       // Which round's slot does a lock write to? One-shot games / round 1 → flat
       // `outcome`; rounds 2+ → the keyed map. The proceed gate blocks advance until every
       // group is 'completed', so current_round is stable across an in-progress round.
-      const roundSlot = resolveRoundSlot(def.rounds, instanceSnap.data()?.['current_round'])
+      const currentRoundPtr = instanceSnap.data()?.['current_round']
+      const roundSlot = resolveRoundSlot(def.rounds, currentRoundPtr)
+      // Ratification mechanic for this round: 'unanimous' (accept/redo loop) or 'ultimatum'
+      // (one decision, reject → terminal no-deal). Absent config → 'unanimous' (unchanged).
+      const mechanic = resolveOutcomeMechanic(def, clampRoundIndex(def.rounds?.length ?? 0, currentRoundPtr))
 
       const groupRef = instanceRef.collection('groups').doc(pdata['group_id'] as string)
 
@@ -115,6 +136,23 @@ export function makeSubmitConfirmation(def: GameDefinition) {
             const pids = (gdata[fieldFor(roleKey, 'participants')] ?? []) as string[]
             for (const pid of pids) txLockedParticipants.push({ participantId: pid, role: roleKey })
           }
+        } else if (resolution === 'reset' && mechanic === 'ultimatum') {
+          // ULTIMATUM (max-attempts = 1): the receiver's single reject is TERMINAL no-deal for
+          // BOTH parties — no reset, no redo, no second offer. Commit a walk-away (null outcome)
+          // so the round's EXISTING no-deal handling scores it (per-round no-deal rules are later
+          // slices; here we only reach the terminal state). Same round slot as a committed deal.
+          tx.update(groupRef, {
+            ...setRoundOutcome(roundSlot, null),
+            status: 'completed',
+            completed_at: FieldValue.serverTimestamp(),
+            confirmations: newState.confirmations,
+          })
+          txOutcome = 'no_deal'
+          txLockedOutcome = null
+          for (const roleKey of roleKeys(def.roles)) {
+            const pids = (gdata[fieldFor(roleKey, 'participants')] ?? []) as string[]
+            for (const pid of pids) txLockedParticipants.push({ participantId: pid, role: roleKey })
+          }
         } else if (resolution === 'reset') {
           const resetCount = ((gdata['reset_count'] as number | undefined) ?? 0) + 1
           if (resetCount >= deadlockAt) {
@@ -143,10 +181,11 @@ export function makeSubmitConfirmation(def: GameDefinition) {
         }
       })
 
-      // Write raw_score to each group member immediately after the group locks.
-      // Best-effort: failure here doesn't roll back the confirmed outcome.
-      // Finalize will recompute the same value (idempotent) and add z-scores unchanged.
-      if (txOutcome === 'locked' && txLockedParticipants.length > 0) {
+      // Write raw_score to each group member immediately after the group locks (a deal OR an
+      // ultimatum no-deal — the latter scores every member at the walk-away floor via
+      // computeRawScore(role, null)). Best-effort: failure here doesn't roll back the outcome.
+      // Finalize/scoreAndRecord recompute the same value (idempotent) and add z-scores unchanged.
+      if ((txOutcome === 'locked' || txOutcome === 'no_deal') && txLockedParticipants.length > 0) {
         try {
           const configSnap = await instanceRef.collection('config').doc('main').get()
           const configData = (configSnap.data() ?? {}) as Record<string, unknown>

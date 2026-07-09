@@ -107,6 +107,25 @@ export interface GameDefinition {
    * and for every round the map does not override, including round 1).
    */
   roundOutcomeSchemas?: Record<string, OutcomeSchema>
+
+  /**
+   * How a group's outcome is ratified after the lead reports it (opt-in; default 'unanimous').
+   *   'unanimous' — the EXISTING accept/redo loop: every present non-lead confirms; a reject
+   *                 RESETS the round (lead re-reports) up to deadlockThreshold, then deadlocks.
+   *   'ultimatum' — max-attempts = 1: the receiver gets ONE decision. All accept → deal; ANY
+   *                 reject → immediate TERMINAL no-deal for both parties (walk-away → the round's
+   *                 existing no-deal handling). No reset, no redo, no second offer, no counter.
+   * This is the WHOLE-GAME default; `roundOutcomeMechanics` overrides it per round.
+   * Absent → 'unanimous' (byte-identical to the existing behavior for every current game).
+   */
+  outcomeMechanic?: 'unanimous' | 'ultimatum'
+  /**
+   * Per-round override of `outcomeMechanic`, keyed by round id (a value in `rounds`). E.g.
+   * Baxter: { '1978': 'ultimatum', '1985': 'ultimatum' } — 1983 keeps the default accept/redo
+   * loop. A round id absent from the map falls back to `outcomeMechanic` then 'unanimous'.
+   * ABSENT → every round uses `outcomeMechanic` (byte-identical for one-shot games).
+   */
+  roundOutcomeMechanics?: Record<string, 'unanimous' | 'ultimatum'>
   /**
    * The only bespoke function each game supplies. null outcome = walk-away (returns 0).
    * configData: the current contents of config/main (may be empty on first run).
