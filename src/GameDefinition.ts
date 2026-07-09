@@ -98,6 +98,16 @@ export interface GameDefinition {
   // ── outcome & scoring ─────────────────────────────────────────────────────
   outcomeSchema: OutcomeSchema
   /**
+   * Optional per-round outcome schemas for a multi-round game whose rounds negotiate
+   * DIFFERENT contracts (e.g. Baxter 1983 is a single continuous wage, not the 1978
+   * six-issue contract). Keyed by round id (a value in `rounds`). The submit flow
+   * validates a round's lead outcome against `roundOutcomeSchemas[roundId]` when present,
+   * else falls back to `outcomeSchema`. ABSENT, or a round id not in the map → the flow
+   * validates against `outcomeSchema` exactly as before (byte-identical for one-shot games
+   * and for every round the map does not override, including round 1).
+   */
+  roundOutcomeSchemas?: Record<string, OutcomeSchema>
+  /**
    * The only bespoke function each game supplies. null outcome = walk-away (returns 0).
    * configData: the current contents of config/main (may be empty on first run).
    * The factory reads config/main before calling this, then passes it via the scorer closure.
