@@ -190,6 +190,17 @@ export interface GameDefinition {
   roleInfoLinks?: Array<{ roleKey: string; links: Array<{ key: string; label: string }> }>
 
   /**
+   * Phase-aware role-info links, keyed by round id (Option-1 derive). Opt-in.
+   * When a staged game (def.rounds present) declares an entry for the instance's
+   * current round, makeGetInfoUrls serves THAT round's links for the caller's role;
+   * otherwise it falls back to the flat roleInfoLinks above. Link keys must appear in
+   * configFields, exactly like roleInfoLinks.
+   * Absent → makeGetInfoUrls is byte-for-byte identical to the flat behavior (no
+   * instance read for one-shot games), so the other games are unaffected.
+   */
+  roleInfoLinksByRound?: Record<string, Array<{ roleKey: string; links: Array<{ key: string; label: string }> }>>
+
+  /**
    * Config key for the shared public info URL shown to all roles on the info page.
    * Absent → no public link section is rendered. The key must appear in configFields.
    */

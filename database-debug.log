@@ -1,0 +1,8 @@
+14:55:15.395 [NamespaceSystem-akka.actor.default-dispatcher-5] INFO akka.event.slf4j.Slf4jLogger - Slf4jLogger started
+14:55:15.465 [main] INFO com.firebase.server.forge.App$ - Listening at 127.0.0.1:9002
+14:55:24.556 [NamespaceSystem-akka.actor.default-dispatcher-5] INFO com.firebase.core.namespace.NamespaceActor - vivo-mygames-live-default-rtdb successfully activated FBKV (SurveyIdle(0)) wait: 50ms, init: 0ms
+14:55:24.586 [NamespaceSystem-blocking-namespace-operation-dispatcher-7] INFO com.firebase.core.namespace.StateManager - Namespace vivo-mygames-live-default-rtdb status Active to Active
+14:56:33.031 [Thread-0] INFO com.firebase.server.forge.App$ - Attempting graceful shutdown.
+14:56:33.035 [NamespaceSystem-akka.actor.default-dispatcher-5] INFO com.firebase.core.namespace.Terminator$Terminator - 1 actors left to terminate: vivo-mygames-live-default-rtdb
+14:56:33.037 [NamespaceSystem-akka.actor.default-dispatcher-5] INFO com.firebase.core.namespace.NamespaceActor - stopped namespace actor for vivo-mygames-live-default-rtdb
+14:56:33.039 [Thread-0] INFO com.firebase.server.forge.App$ - Graceful shutdown complete.

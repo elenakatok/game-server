@@ -3,6 +3,7 @@ import * as admin from 'firebase-admin'
 import { extractStudentOnCallIds } from '../auth/studentOnCallAuth'
 import type { GameDefinition } from '../GameDefinition'
 import { readConfigField } from '../config/configField'
+import { clampRoundIndex } from '../flow/roundOutcome'
 
 /**
  * Returns the info-page link URLs for the authenticated student's role.
@@ -25,9 +26,14 @@ export function makeGetInfoUrls(def: GameDefinition) {
 
     const db = admin.firestore()
     const instanceRef = db.collection('game_instances').doc(gameInstanceId)
-    const [participantSnap, configSnap] = await Promise.all([
+    // Staged games (def.rounds present) also read the instance doc for current_round so
+    // phase-aware role-info can serve the round's links. One-shot games skip that read
+    // entirely → the flat behavior below is byte-for-byte identical.
+    const isStaged = Array.isArray(def.rounds) && def.rounds.length > 0
+    const [participantSnap, configSnap, instanceSnap] = await Promise.all([
       instanceRef.collection('participants').doc(participantId).get(),
       instanceRef.collection('config').doc('main').get(),
+      isStaged ? instanceRef.get() : Promise.resolve(null),
     ])
 
     const participantRole = (participantSnap.data() ?? {}).role as string | undefined
@@ -45,7 +51,17 @@ export function makeGetInfoUrls(def: GameDefinition) {
         : (typeof cfg[key] === 'string' ? (cfg[key] as string) : '')
     }
 
-    const roleDef = (def.roleInfoLinks ?? []).find(r => r.roleKey === participantRole)
+    // Phase-aware links (Option-1 derive): if the game declares roleInfoLinksByRound and
+    // has an entry for the instance's current round, use it; else fall back to flat.
+    let roleLinkSet = def.roleInfoLinks ?? []
+    if (isStaged && def.roleInfoLinksByRound) {
+      const rounds = def.rounds as string[]
+      const roundId = rounds[clampRoundIndex(rounds.length, instanceSnap?.data()?.['current_round'])]
+      const byRound = def.roleInfoLinksByRound[roundId]
+      if (byRound) roleLinkSet = byRound
+    }
+
+    const roleDef = roleLinkSet.find(r => r.roleKey === participantRole)
     const links = (roleDef?.links ?? []).map(({ key, label }) => ({
       label,
       url: resolveUrl(key) || null,
