@@ -31,12 +31,16 @@ export function parsePrepTextQuestions(raw: unknown): PrepTextQuestion[] | null 
     if (typeof q['hidden']      !== 'boolean')                                 return null
     if (typeof q['deletable']   !== 'boolean')                                 return null
 
-    const type: 'text' | 'number' | 'mc' =
-      q['type'] === 'number' ? 'number' : q['type'] === 'mc' ? 'mc' : 'text'
+    const type: 'text' | 'number' | 'mc' | 'likert' =
+      q['type'] === 'number' ? 'number'
+      : q['type'] === 'mc'     ? 'mc'
+      : q['type'] === 'likert' ? 'likert'
+      : 'text'
     const system: boolean = q['system'] === true
 
+    // 'mc' answer choices and 'likert' rating points are both carried in `options`.
     let options: MCOption[] | undefined
-    if (type === 'mc') {
+    if (type === 'mc' || type === 'likert') {
       if (!Array.isArray(q['options'])) return null
       options = []
       for (const opt of q['options'] as unknown[]) {
@@ -51,8 +55,10 @@ export function parsePrepTextQuestions(raw: unknown): PrepTextQuestion[] | null 
       q['format'] === 'multiple_choice' ? 'multiple_choice'
       : q['format'] === 'number'        ? 'number'
       : q['format'] === 'text'          ? 'text'
+      : q['format'] === 'likert'        ? 'likert'
       : type === 'mc'                   ? 'multiple_choice'
       : type === 'number'               ? 'number'
+      : type === 'likert'               ? 'likert'
       : 'text'
 
     const category: PrepTextQuestion['category'] =

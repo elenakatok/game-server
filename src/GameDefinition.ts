@@ -37,16 +37,18 @@ export type PrepQuestion = {
  */
 export type PrepTextQuestion = {
   field:       string
-  type:        'text' | 'number' | 'mc'
+  type:        'text' | 'number' | 'mc' | 'likert'
   system:      boolean
   prompt:      string
   placeholder: string
   order:       number
   hidden:      boolean
   deletable:   boolean
+  /** For 'mc': the answer choices. For 'likert': the ordered rating points (value '1'..'N'); the
+   *  first and last option labels are the scale anchors (e.g. 'Very poor' … 'Very good'). */
   options?:    MCOption[]
   category:    'knowledge_check' | 'preparation' | 'debrief'
-  format:      'multiple_choice' | 'number' | 'text'
+  format:      'multiple_choice' | 'number' | 'text' | 'likert'
   grading?:    'static' | 'assigned_role'
   correct_value?: string
   /** 'all' = every role; any other string = a specific role key. Legacy 'both' normalised to 'all' on parse. */
