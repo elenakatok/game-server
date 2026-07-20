@@ -62,6 +62,7 @@ export {
 } from './flow/roundOutcome'
 export { reopenGroupPatch } from './flow/reopenGroup'
 export { makeStartNegotiation } from './flow/makeStartNegotiation'
+export { makeGetGroupMemberEmails } from './flow/makeGetGroupMemberEmails'
 export { makeSubmitLeadOutcome } from './flow/makeSubmitLeadOutcome'
 export { makeSubmitConfirmation } from './flow/makeSubmitConfirmation'
 export { makeSubmitInstructorOutcome } from './flow/makeSubmitInstructorOutcome'

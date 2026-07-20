@@ -86,6 +86,7 @@ export function makeSyncRoster(def: GameDefinition) {
           participants: Array<{
             participant_id: string
             name: string
+            email: string | null
             external_id: string | null
           }>
         }
@@ -116,13 +117,26 @@ export function makeSyncRoster(def: GameDefinition) {
             continue
           }
 
+          // EMAIL, PRESERVE-ON-EMPTY. The classroom may legitimately return an
+          // empty email for a legacy row imported before it became required, so
+          // an empty value NEVER overwrites an address the game already holds —
+          // that would be silent data loss with no upside. A non-empty value
+          // always wins, which is how a blank row gets fixed: the instructor
+          // fills the email in the classroom and the next sync propagates it.
+          const email = (p.email ?? '').trim()
+
           if (snap.exists) {
-            batch.update(snap.ref, { name: p.name, external_id: p.external_id ?? null })
+            batch.update(snap.ref, {
+              name: p.name,
+              external_id: p.external_id ?? null,
+              ...(email ? { email } : {}),
+            })
           } else {
             batch.set(snap.ref, {
               participant_id: p.participant_id,
               game_instance_id: gameInstanceId,
               name: p.name,
+              email: email || null,
               external_id: p.external_id ?? null,
               prep_status: 'not_started',
             })
