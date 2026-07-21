@@ -57,6 +57,7 @@ export {
   type PlacementResult,
 } from './flow/placement'
 export { placeLatecomer, type PlaceLatecomerResult } from './flow/placeLatecomer'
+export { negotiationIsJoinable } from './flow/negotiationJoinable'
 export type {
   JoinableContext,
   PlaceContext,
