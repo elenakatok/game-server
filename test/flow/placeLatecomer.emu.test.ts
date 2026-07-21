@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import * as admin from 'firebase-admin'
 import { placeLatecomer } from '../../src/flow/placeLatecomer'
+import { negotiationIsJoinable } from '../../src/flow/negotiationJoinable'
 import type { GameDefinition } from '../../src/GameDefinition'
 
 const EMU = !!process.env.FIRESTORE_EMULATOR_HOST
@@ -61,8 +62,9 @@ const participant = async (instanceId: string, pid: string) =>
 const group = async (instanceId: string, gid: string) =>
   (await db.collection('game_instances').doc(instanceId).collection('groups').doc(gid).get()).data()
 
-// 'matched' groups are joinable; anything else is not (the negotiation predicate).
-const joinableWhenMatched = (g: admin.firestore.DocumentData) => g['status'] === 'matched'
+// The SHIPPED negotiation predicate (status === 'matched'); the placement emu
+// tests below exercise the real thing all five negotiation games reference.
+const joinableWhenMatched = negotiationIsJoinable
 
 d('placeLatecomer — emulator', () => {
   it('7. onPlace runs exactly once for a placed latecomer', async () => {
