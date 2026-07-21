@@ -51,6 +51,17 @@ export { makeSubmitKnowledgeCheck } from './kc/makeSubmitKnowledgeCheck'
 export { makeSubmitStaticKnowledgeCheckQuestion } from './kc/makeSubmitStaticKnowledgeCheckQuestion'
 
 export { makeTriggerMatching } from './flow/makeTriggerMatching'
+export {
+  selectPlacementGroup,
+  type PlacementCandidate,
+  type PlacementResult,
+} from './flow/placement'
+export { placeLatecomer, type PlaceLatecomerResult } from './flow/placeLatecomer'
+export type {
+  JoinableContext,
+  PlaceContext,
+  PlacementParticipant,
+} from './flow/placementTypes'
 export { makeAdvanceRound } from './flow/makeAdvanceRound'
 export {
   ROUND_OUTCOMES_FIELD,

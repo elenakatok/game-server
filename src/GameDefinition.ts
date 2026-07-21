@@ -1,4 +1,6 @@
 import type { RoleConfig, OutcomeSchema, Outcome } from '@mygames/game-engine'
+import type { DocumentData } from 'firebase-admin/firestore'
+import type { JoinableContext, PlaceContext, PlacementParticipant } from './flow/placementTypes'
 
 // KCQuestion and PrepQuestion are not yet in @mygames/game-engine.
 // TODO BU-3: relocate these to @mygames/game-engine (or @mygames/game-ui) once the KC flow is extracted.
@@ -208,4 +210,26 @@ export interface GameDefinition {
 
   // ── dashboard (UI only — type refined in @mygames/game-ui at BU-1) ────────
   dashboardColumns?: unknown
+
+  // ── latecomer placement (Latecomer_Placement_Spec_v1 §3.1) ────────────────
+  // Both OPTIONAL and strictly ADDITIVE. The existing matching path
+  // (makeTriggerMatching / matchParticipants) never reads either; only the
+  // separate placeLatecomer flow does. A game supplying neither behaves exactly
+  // as it does today.
+  /**
+   * Is this group accepting a latecomer right now? ABSENT → no group is ever
+   * joinable → the latecomer is marked absent (the safe default, spec §3 step 2).
+   * The negotiation games' predicate is `group.status === 'matched'`; eBay reads
+   * a clock + a count; Spectrum returns always-true.
+   */
+  isJoinable?: (group: DocumentData, ctx: JoinableContext) => boolean
+  /**
+   * Per-member setup that group CREATION normally performs and that would
+   * otherwise never fire for a latecomer joining an EXISTING group — e.g. eBay's
+   * onCreate signal/endowment assignment, Spectrum's per-member team-state
+   * mirror. Runs inside the placement transaction after the group_id write;
+   * WRITE-ONLY (see PlaceContext). ABSENT → nothing extra, which is correct for
+   * the negotiation games, where a matched member gets only a group_id.
+   */
+  onPlace?: (group: DocumentData, participant: PlacementParticipant, ctx: PlaceContext) => Promise<void>
 }
