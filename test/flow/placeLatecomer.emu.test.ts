@@ -144,6 +144,31 @@ d('placeLatecomer — emulator', () => {
     expect(p2?.group_id).toBe('g1')
   })
 
+  it('7b. onPlace may READ then WRITE within the transaction (Spectrum path)', async () => {
+    // Prove the Part-A capability eBay does not exercise: onPlace reads fresh
+    // state (here a per-group "truth" doc) and writes a mirror onto the member —
+    // exactly what Spectrum needs for current team cash.
+    const inst = await seed([{ id: 'g1', status: 'matched', members: ['a', 'b'] }], ['late'])
+    // Seed a group truth doc onPlace will READ.
+    await db.collection('game_instances').doc(inst).collection('groups').doc('g1')
+      .collection('truth').doc('team').set({ cash: 4242 })
+
+    const def: PlacementDef = {
+      roles,
+      isJoinable: joinableWhenMatched,
+      onPlace: async (_g, _p, ctx) => {
+        const truth = await ctx.tx.get(ctx.groupRef.collection('truth').doc('team')) // READ
+        const cash = (truth.data()?.cash as number | undefined) ?? 0
+        ctx.tx.update(ctx.participantRef, { team_cash_mirror: cash })                 // WRITE
+      },
+    }
+    const res = await placeLatecomer(def, db, inst, 'late')
+    expect('placed' in res).toBe(true)
+    const p = await participant(inst, 'late')
+    expect(p?.team_cash_mirror).toBe(4242) // read fed the write
+    expect(p?.group_id).toBe('g1')         // placement still happened
+  })
+
   it('9b. concurrent placements across two joinable groups → each placed once, total membership +2', async () => {
     const inst = await seed(
       [

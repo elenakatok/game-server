@@ -59,22 +59,31 @@ export async function placeLatecomer(
   const roleFields = roleKeys(def.roles).map((k) => fieldFor(k, 'participants'))
 
   return db.runTransaction(async (tx) => {
-    // ── READS (all before any write — Firestore rule) ──────────────────────
+    // ── READS (all Firestore reads before any write — Firestore rule) ──────
     const [pSnap, groupsSnap] = await Promise.all([tx.get(participantRef), tx.get(groupsRef)])
     if (!pSnap.exists) throw new Error(`placeLatecomer: participant ${participantId} not found`)
     const role = pSnap.data()!['role'] as string
 
-    const candidates: GroupCandidate[] = groupsSnap.docs.map((d) => {
+    const infos = groupsSnap.docs.map((d) => {
       const data = d.data()
       const size = roleFields.reduce(
         (n, f) => n + ((data[f] as string[] | undefined)?.length ?? 0),
         0,
       )
-      const joinable = def.isJoinable
-        ? def.isJoinable(data, { gameInstanceId, participantCount: size })
-        : false
-      return { ref: d.ref, data, size, joinable }
+      return { ref: d.ref, data, size }
     })
+
+    // isJoinable may be async (e.g. eBay reads the RTDB auction clock), so evaluate
+    // every group's predicate here, in the read phase, BEFORE any write. This keeps
+    // the selector itself pure — it receives resolved booleans.
+    const joinableFlags = await Promise.all(
+      infos.map((g) =>
+        def.isJoinable
+          ? Promise.resolve(def.isJoinable(g.data, { gameInstanceId, participantCount: g.size }))
+          : Promise.resolve(false),
+      ),
+    )
+    const candidates: GroupCandidate[] = infos.map((g, i) => ({ ...g, joinable: joinableFlags[i] }))
 
     // ── SELECT (pure) ──────────────────────────────────────────────────────
     const forSelect: PlacementCandidate<GroupCandidate>[] = candidates.map((c) => ({
@@ -87,12 +96,11 @@ export async function placeLatecomer(
 
     const chosen = result.placed
 
-    // ── WRITES (placement only; onPlace may add more) ──────────────────────
-    tx.update(participantRef, { group_id: chosen.data['group_id'], is_lead: false })
-    // arrayUnion keeps a concurrent placement into the same group from clobbering
-    // the other's membership; also idempotent on a transaction retry.
-    tx.update(chosen.ref, { [fieldFor(role, 'participants')]: FieldValue.arrayUnion(participantId) })
-
+    // onPlace runs HERE — still before the placement's own writes — so it may do
+    // its own tx reads (fresh, retry-safe) THEN writes, all within the one atomic
+    // transaction. A latecomer thus ends up in EXACTLY the state matching would
+    // have produced (spec §Part A). onPlace sees the pre-placement group snapshot
+    // (`chosen.data`), which is what it needs (e.g. eBay's next bidder slot).
     if (def.onPlace) {
       await def.onPlace(
         chosen.data,
@@ -100,6 +108,12 @@ export async function placeLatecomer(
         { gameInstanceId, db, tx, groupRef: chosen.ref, participantRef },
       )
     }
+
+    // ── PLACEMENT WRITES ───────────────────────────────────────────────────
+    tx.update(participantRef, { group_id: chosen.data['group_id'], is_lead: false })
+    // arrayUnion keeps a concurrent placement into the same group from clobbering
+    // the other's membership; also idempotent on a transaction retry.
+    tx.update(chosen.ref, { [fieldFor(role, 'participants')]: FieldValue.arrayUnion(participantId) })
 
     return { placed: chosen.data }
   })

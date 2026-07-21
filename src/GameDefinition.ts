@@ -217,19 +217,22 @@ export interface GameDefinition {
   // separate placeLatecomer flow does. A game supplying neither behaves exactly
   // as it does today.
   /**
-   * Is this group accepting a latecomer right now? ABSENT → no group is ever
-   * joinable → the latecomer is marked absent (the safe default, spec §3 step 2).
-   * The negotiation games' predicate is `group.status === 'matched'`; eBay reads
-   * a clock + a count; Spectrum returns always-true.
+   * Is this group accepting a latecomer right now? MAY be async — evaluated in
+   * the placement transaction's read phase, so it can read fresh state (eBay
+   * reads the RTDB auction clock; the negotiation games test `group.status ===
+   * 'matched'`; Spectrum returns always-true). ABSENT → no group is ever joinable
+   * → the latecomer is marked absent (the safe default, spec §3 step 2).
    */
-  isJoinable?: (group: DocumentData, ctx: JoinableContext) => boolean
+  isJoinable?: (group: DocumentData, ctx: JoinableContext) => boolean | Promise<boolean>
   /**
    * Per-member setup that group CREATION normally performs and that would
    * otherwise never fire for a latecomer joining an EXISTING group — e.g. eBay's
-   * onCreate signal/endowment assignment, Spectrum's per-member team-state
-   * mirror. Runs inside the placement transaction after the group_id write;
-   * WRITE-ONLY (see PlaceContext). ABSENT → nothing extra, which is correct for
-   * the negotiation games, where a matched member gets only a group_id.
+   * onCreate endowment assignment, Spectrum's per-member team-state mirror. Runs
+   * inside the placement transaction, BEFORE the group_id/membership writes, so
+   * it may do its own tx reads THEN writes (all reads before any write, Firestore
+   * rule — see PlaceContext). It receives the PRE-placement group snapshot.
+   * ABSENT → nothing extra, correct for the negotiation games where a matched
+   * member gets only a group_id.
    */
   onPlace?: (group: DocumentData, participant: PlacementParticipant, ctx: PlaceContext) => Promise<void>
 }

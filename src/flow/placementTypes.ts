@@ -24,11 +24,12 @@ export interface PlacementParticipant {
 }
 
 /**
- * Write context for `onPlace`. onPlace runs INSIDE the placement transaction,
- * AFTER the group_id write, so it may only WRITE via `tx` — Firestore forbids
- * reads after writes in a single transaction. A game whose per-member setup
- * needs to READ (e.g. current team cash) will get a dedicated read hook when it
- * is wired; none exists yet because no game is wired in this step.
+ * Context for `onPlace`. onPlace runs INSIDE the placement transaction, BEFORE
+ * the group_id/membership writes, so it may do its own reads via `tx.get` and
+ * THEN writes via `tx` — as long as all reads precede all writes (Firestore's
+ * one rule). This is how a latecomer reaches EXACTLY the state matching would
+ * have produced: eBay writes the bidder endowment for the next slot; Spectrum
+ * reads current team cash and writes the per-member mirror.
  */
 export interface PlaceContext {
   gameInstanceId: string

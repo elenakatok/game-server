@@ -4,6 +4,7 @@ import { FieldValue } from 'firebase-admin/firestore'
 import { extractStudentOnCallIds } from '../auth/studentOnCallAuth'
 import { resolveRoundSlot } from '../flow/roundOutcome'
 import { presenceAtSlot, setRoundPresence } from './roundPresence'
+import { placeLatecomer } from '../flow/placeLatecomer'
 import type { GameDefinition } from '../GameDefinition'
 
 async function doVerifyAttendanceCode(
@@ -82,6 +83,29 @@ async function doVerifyAttendanceCode(
     ? admin.database().ref(`attending/${gameInstanceId}/${participantId}`)
     : admin.database().ref(`attending_by_round/${gameInstanceId}/${slot.roundId}/${participantId}`)
   await overlayRef.set(overlay)
+
+  // ── Latecomer auto-placement (Latecomer_Placement_Spec_v1 §3) ──────────────
+  // OPT-IN and ADDITIVE: a game that declares no isJoinable skips this entire
+  // block, so its behaviour is byte-identical to before. It runs only AFTER
+  // matching has produced groups; a student who confirms BEFORE matching just
+  // waits as today (no groups → skip). `pdata` predates the presence write, so
+  // its null group_id correctly identifies an unplaced student on first entry.
+  if (def.isJoinable && pdata['group_id'] == null) {
+    const groupsExist = !(await instanceRef.collection('groups').limit(1).get()).empty
+    if (groupsExist) {
+      const result = await placeLatecomer(def, db, gameInstanceId, participantId)
+      if ('absent' in result) {
+        // No joinable group. Scoring needs NO change: a participant with no
+        // group_id (and not participant_late) is already 'no_show' at finalize
+        // (spec §5). participant_late is deliberately NOT set — that is grays'
+        // separate 'late' bucket, which this design does not use. latecomer_absent
+        // is a UI-only flag driving the student's clear terminal message (§4).
+        await participantRef.update({ latecomer_absent: true })
+      }
+      // Placed → placeLatecomer stamped group_id; the student's waiting room
+      // advances exactly as a normally-matched student's does.
+    }
+  }
 }
 
 /**
