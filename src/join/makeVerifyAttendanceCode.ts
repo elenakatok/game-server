@@ -90,7 +90,15 @@ async function doVerifyAttendanceCode(
   // matching has produced groups; a student who confirms BEFORE matching just
   // waits as today (no groups → skip). `pdata` predates the presence write, so
   // its null group_id correctly identifies an unplaced student on first entry.
-  if (def.isJoinable && pdata['group_id'] == null) {
+  //
+  // FIRST-ROUND GATE (multi-round games): placement runs only in the FIRST round.
+  // `slot.kind === 'flat'` is true for a one-shot game (no def.rounds) AND for
+  // round 1 of a staged game (current_round absent/0/garbage → clamped to flat);
+  // it is 'keyed' only for round 2+. So a single-round game is byte-identical to
+  // today, and a multi-round game (Baxter) skips placement after round 1 — a
+  // student who missed day 1 (group_id == null in round 2+) falls through to the
+  // game's own absence handling, never re-placed and never marked latecomer_absent.
+  if (def.isJoinable && pdata['group_id'] == null && slot.kind === 'flat') {
     const groupsExist = !(await instanceRef.collection('groups').limit(1).get()).empty
     if (groupsExist) {
       const result = await placeLatecomer(def, db, gameInstanceId, participantId)
