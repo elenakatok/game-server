@@ -119,6 +119,22 @@ export function makeStageGroupAdapter(): GroupDocAdapter {
         bot_count: bots.length,
         lead_participant_id: lead,
         ...denormalised(occupants),
+        /**
+         * INITIALISED EMPTY, and that is load-bearing.
+         *
+         * `makeGetOnlineReport` decides `arrival_data_present` by the PRESENCE of
+         * this field, so that a game which is wired but whose students have not
+         * turned up yet still reports real data (everyone `arrived: false`) rather
+         * than "not recorded".
+         *
+         * If the field only appeared on the first arrival — via arrayUnion, which is
+         * how it is written — then a freshly pre-grouped instance would have no key
+         * at all. That is the NORMAL state of an online assignment, since the whole
+         * point is that students arrive later, and the report would wrongly announce
+         * that the game is not writing arrivals. Presence-of-field cannot distinguish
+         * "not wired" from "wired, nobody yet" unless creation writes it.
+         */
+        arrived: [],
         outcome: null,
         status: 'matched',
         matched_at: now,

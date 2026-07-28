@@ -183,6 +183,38 @@ describe('the two families share one seat machinery', () => {
 // ── §2.1.1 item B: arrival data present vs absent ─────────────────────────────
 
 describe('arrival data — missing must be distinguishable from empty', () => {
+  it('GROUP CREATION initialises arrived[] — the fix for the false alarm', () => {
+    // Without this, the field only appears on a student's FIRST arrival (arrayUnion),
+    // so a freshly pre-grouped instance — the normal state of an online assignment,
+    // where the whole point is that students arrive later — has no key at all and the
+    // report wrongly announces "this game is not writing arrived[]".
+    const fields = stage.newGroupFields({
+      groupId: 'g', gameInstanceId: 'i', existing: null,
+      occupants: [human('h1'), human('h2')], lead: 'h1', now: 'T',
+    })
+    expect(Object.prototype.hasOwnProperty.call(fields, 'arrived')).toBe(true)
+    expect(fields.arrived).toEqual([])
+  })
+
+  it('a group created by the shared path therefore reports DATA, not "not recorded"', () => {
+    const fields = stage.newGroupFields({
+      groupId: 'g', gameInstanceId: 'i', existing: null,
+      occupants: [human('h1')], lead: 'h1', now: 'T',
+    })
+    // This is exactly what makeGetOnlineReport keys on.
+    expect(Object.prototype.hasOwnProperty.call(fields, 'arrived')).toBe(true)
+  })
+
+  it('a seat MOVE never fabricates arrived[] on a group that lacks it', () => {
+    // writeMembership must not paper over an unwired game — the signal has to stay
+    // truthful for a game that creates its groups outside the shared path.
+    const patch = stage.writeMembership({
+      existing: { player_participants: ['h1'], bot_participants: [] },
+      occupants: [human('h1')], lead: 'h1',
+    })
+    expect(Object.prototype.hasOwnProperty.call(patch, 'arrived')).toBe(false)
+  })
+
   // The report's rule, isolated: `arrivalDataPresent` keys on the PRESENCE of the
   // `arrived` field, not on the emptiness of the set. A game that writes
   // `arrived: []` and genuinely had nobody turn up is reporting real data; a game
