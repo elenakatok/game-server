@@ -81,3 +81,33 @@ export { makeSubmitInstructorOutcome } from './flow/makeSubmitInstructorOutcome'
 export { makeFinalizeInstance, buildScoringRecord, type CompletedGroup } from './flow/makeFinalizeInstance'
 export { makePushResultsToClassroom } from './flow/makePushResultsToClassroom'
 export { makeGetDebriefQuestions } from './kc/makeGetDebriefQuestions'
+
+// ── ONLINE / SEAT MANAGEMENT (Slice 2 — ADDITIVE, no existing export changed) ──
+// Promoted from Crisis per Extraction Spec §2.1. No game consumes these yet.
+export type {
+  SeatOccupant, SeatGroup, OnlineDefinition, MakeBotSeatContext,
+  MoveResult, FillResult, MoveOutcome, FillOutcome, SeatOpRejection,
+} from './online/types'
+export {
+  leadOf, isFull, freeSeats, canAcceptHuman,
+  moveOccupant, ungroupOccupant, fillWithBots, chunkIntoGroups,
+  checkSeatingInvariants, populationOf,
+  type SeatingPlan, type InvariantViolation,
+} from './online/seatOps'
+export {
+  makeStageGroupAdapter, makeNegotiationGroupAdapter, toSeatGroup,
+  type GroupDocAdapter, type GroupDoc, type WriteMembershipInput, type NewGroupInput,
+} from './online/groupDocAdapter'
+export { groupNumbering, type OnlineContext } from './online/context'
+export {
+  makeMoveSeat, makeTopUpGroupWithBots, makeGetOnlineGroups, UNGROUP, NEW_GROUP,
+} from './online/makeSeatManagement'
+export {
+  makeGroupParticipantsOnline, makeRecordLogin, makeStartAllGroups,
+  type GroupingOptions, type StartAllGroupsOptions,
+} from './online/makeOnlineGrouping'
+export { makeFlagGroup, type FlagRecord } from './online/makeFlagGroup'
+export {
+  makeGetOnlineReport,
+  type GroupCategory, type GroupProgress, type OnlineReportOptions,
+} from './online/makeGetOnlineReport'
