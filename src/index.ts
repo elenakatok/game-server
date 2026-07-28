@@ -111,3 +111,7 @@ export {
   makeGetOnlineReport,
   type GroupCategory, type GroupProgress, type OnlineReportOptions,
 } from './online/makeGetOnlineReport'
+
+export {
+  DEFAULT_CALLBACK_SECRET_NAME, callbackSecretName, callbackSecretParam, callbackSecretValue,
+} from './callbackSecret'

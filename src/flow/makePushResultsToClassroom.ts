@@ -1,13 +1,13 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https'
-import { defineSecret } from 'firebase-functions/params'
 import * as admin from 'firebase-admin'
 import { extractInstructorGameId } from '../auth/instructorAuth'
 import { dispatchResults, toGameResult, type GameResult } from '../classroom/reportResult'
 import type { GameDefinition } from '../GameDefinition'
+import { callbackSecretName, callbackSecretParam, callbackSecretValue } from '../callbackSecret'
 
 // Registered at module load so the Firebase CLI knows this function needs the secret.
-// All games use 'CLASSROOM_CALLBACK_SECRET' as the secret name in their Firebase project.
-const classroomCallbackSecret = defineSecret('CLASSROOM_CALLBACK_SECRET')
+// The secret NAME is per-game (see ../callbackSecret); it defaults to
+// 'CLASSROOM_CALLBACK_SECRET', which is what all nine existing games use.
 
 /**
  * Returns an onCall function that pushes finalized participant scores to the classroom.
@@ -23,8 +23,9 @@ const classroomCallbackSecret = defineSecret('CLASSROOM_CALLBACK_SECRET')
  * Returns: { ok: true, total, succeeded, failed: [{ participant_id, reason }] }
  */
 export function makePushResultsToClassroom(def: GameDefinition) {
+  const secretName = callbackSecretName(def)
   return onCall(
-    { cors: def.corsOrigins, secrets: [classroomCallbackSecret] },
+    { cors: def.corsOrigins, secrets: [callbackSecretParam(secretName)] },
     async (request) => {
       const data = request.data as Record<string, unknown>
       const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true'
@@ -37,8 +38,9 @@ export function makePushResultsToClassroom(def: GameDefinition) {
         : null
       const callbackUrl =
         (devBody?.['callback_url'] as string | undefined) ?? process.env.CLASSROOM_CALLBACK_URL ?? ''
-      const callbackSecret =
-        (devBody?.['callback_secret'] as string | undefined) ?? process.env.CLASSROOM_CALLBACK_SECRET ?? ''
+      const callbackSecret = callbackSecretValue(
+        secretName, devBody?.['callback_secret'] as string | undefined,
+      )
 
       console.log('[push] callbackUrl:', callbackUrl || '(empty)',
         '| secretLen:', callbackSecret.length)

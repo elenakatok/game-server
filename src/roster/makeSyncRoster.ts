@@ -1,12 +1,8 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https'
-import { defineSecret } from 'firebase-functions/params'
 import * as admin from 'firebase-admin'
 import { extractInstructorGameId } from '../auth/instructorAuth'
 import type { GameDefinition } from '../GameDefinition'
-
-// Registered at module load so Firebase CLI knows this function needs the secret.
-// All games use 'CLASSROOM_CALLBACK_SECRET' as the secret name in their own Firebase project.
-const classroomCallbackSecret = defineSecret('CLASSROOM_CALLBACK_SECRET')
+import { callbackSecretName, callbackSecretParam, callbackSecretValue } from '../callbackSecret'
 
 /**
  * Returns an onCall function that fetches the classroom enrollment roster and
@@ -21,8 +17,11 @@ const classroomCallbackSecret = defineSecret('CLASSROOM_CALLBACK_SECRET')
  * Returns: { ok: true, synced, skipped }
  */
 export function makeSyncRoster(def: GameDefinition) {
+  // Per-game secret name, defaulting to CLASSROOM_CALLBACK_SECRET. Resolved once, at
+  // factory time, so the bound param and the value read below can never diverge.
+  const secretName = callbackSecretName(def)
   return onCall(
-    { cors: def.corsOrigins, secrets: [classroomCallbackSecret] },
+    { cors: def.corsOrigins, secrets: [callbackSecretParam(secretName)] },
     async (request) => {
       const data = request.data as Record<string, unknown>
       const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true'
@@ -34,10 +33,9 @@ export function makeSyncRoster(def: GameDefinition) {
         isEmulator && data._dev != null ? (data._dev as Record<string, unknown>) : null
       const rosterUrl =
         (devData?.roster_url as string | undefined) ?? process.env.CLASSROOM_ROSTER_URL ?? ''
-      const callbackSecret =
-        (devData?.callback_secret as string | undefined) ??
-        process.env.CLASSROOM_CALLBACK_SECRET ??
-        ''
+      const callbackSecret = callbackSecretValue(
+        secretName, devData?.callback_secret as string | undefined,
+      )
 
       console.log('[syncRoster] config check', {
         has_roster_url: !!rosterUrl,
@@ -47,7 +45,7 @@ export function makeSyncRoster(def: GameDefinition) {
 
       if (!rosterUrl || !callbackSecret) {
         console.error(
-          '[syncRoster] missing config: CLASSROOM_ROSTER_URL or CLASSROOM_CALLBACK_SECRET not set',
+          `[syncRoster] missing config: CLASSROOM_ROSTER_URL or ${secretName} not set`,
         )
         throw new HttpsError('internal', 'Classroom roster not configured')
       }

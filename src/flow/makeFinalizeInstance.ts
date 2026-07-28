@@ -1,23 +1,24 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https'
-import { defineSecret } from 'firebase-functions/params'
 import * as admin from 'firebase-admin'
 import { FieldValue } from 'firebase-admin/firestore'
 import { computeZScoresByRole, isValidRole, type ScoringRecord, type Outcome } from '@mygames/game-engine'
 import { extractInstructorGameId } from '../auth/instructorAuth'
 import { dispatchResults, toGameResult, type GameResult, type PushSummary } from '../classroom/reportResult'
 import type { GameDefinition } from '../GameDefinition'
+import { callbackSecretName, callbackSecretParam, callbackSecretValue } from '../callbackSecret'
 
-// All games store the classroom callback secret under this name in their own project.
-// Registered at module load so the Firebase CLI provisions it for finalizeInstance —
-// finalize now dispatches results itself (see Fix 1), so it needs the secret too.
-const classroomCallbackSecret = defineSecret('CLASSROOM_CALLBACK_SECRET')
+// The secret NAME is per-game (see ../callbackSecret) and defaults to
+// 'CLASSROOM_CALLBACK_SECRET'. finalize dispatches results itself, so it needs the
+// secret as well as push does.
 
 /** Resolves the classroom callback URL + secret (prod env, with emulator _dev override). */
-function resolveCallbackConfig(data: Record<string, unknown>, isEmulator: boolean): { url: string; secret: string } {
+function resolveCallbackConfig(
+  data: Record<string, unknown>, isEmulator: boolean, secretName: string,
+): { url: string; secret: string } {
   const dev = isEmulator && data['_dev'] != null ? (data['_dev'] as Record<string, unknown>) : null
   return {
     url: (dev?.['callback_url'] as string | undefined) ?? process.env.CLASSROOM_CALLBACK_URL ?? '',
-    secret: (dev?.['callback_secret'] as string | undefined) ?? process.env.CLASSROOM_CALLBACK_SECRET ?? '',
+    secret: callbackSecretValue(secretName, dev?.['callback_secret'] as string | undefined),
   }
 }
 
@@ -80,13 +81,14 @@ export function buildScoringRecord(
  * Returns: { ok: true, scored: number }
  */
 export function makeFinalizeInstance(def: GameDefinition) {
-  return onCall({ cors: def.corsOrigins, secrets: [classroomCallbackSecret] }, async (request) => {
+  const secretName = callbackSecretName(def)
+  return onCall({ cors: def.corsOrigins, secrets: [callbackSecretParam(secretName)] }, async (request) => {
     const data = request.data as Record<string, unknown>
     const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true'
     const authHeader = request.rawRequest.headers.authorization as string | undefined
 
     const gameInstanceId = await extractInstructorGameId(data, isEmulator, authHeader)
-    const { url: callbackUrl, secret: callbackSecret } = resolveCallbackConfig(data, isEmulator)
+    const { url: callbackUrl, secret: callbackSecret } = resolveCallbackConfig(data, isEmulator, secretName)
 
     // Pushes a record set to the classroom; no-op (succeeds) when no callback configured.
     const push = async (records: GameResult[]): Promise<PushSummary> => {

@@ -157,8 +157,20 @@ export interface GameDefinition {
   }
 
   // ── classroom contract ────────────────────────────────────────────────────
-  /** Secret Manager secret ID for the classroom callback (e.g. 'winemaster_v1'). */
-  classroom: { callbackSecretId: string }
+  /**
+   * `callbackSecretId` — the resolver key the CLASSROOM side matches (e.g. 'winemaster_v1').
+   *
+   * `callbackSecretName` — the name of the secret in THIS GAME's own Firebase project.
+   * OPTIONAL; omit it and every callback path uses 'CLASSROOM_CALLBACK_SECRET', which is
+   * what all nine existing games do. Set it when `scripts/game-locations.json` gives the
+   * game a `gameSecretName` — the two MUST agree, or `spawn-secret.sh` provisions one
+   * name while the deployed functions bind another, and every callback 403s behind a
+   * deploy that reported success.
+   *
+   * One field, read by finalizeInstance, pushResultsToClassroom AND syncRoster, so the
+   * three cannot disagree.
+   */
+  classroom: { callbackSecretId: string; callbackSecretName?: string }
   /**
    * Number of failed confirmation rounds before a group is declared deadlocked.
    * Absent → factory defaults to 5.
