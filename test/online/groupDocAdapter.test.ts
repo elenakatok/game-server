@@ -179,3 +179,26 @@ describe('the two families share one seat machinery', () => {
     expect(toSeatGroup(negotiation, 'N', { negotiation_started_at: 'T' }).started).toBe(true)
   })
 })
+
+// ── §2.1.1 item B: arrival data present vs absent ─────────────────────────────
+
+describe('arrival data — missing must be distinguishable from empty', () => {
+  // The report's rule, isolated: `arrivalDataPresent` keys on the PRESENCE of the
+  // `arrived` field, not on the emptiness of the set. A game that writes
+  // `arrived: []` and genuinely had nobody turn up is reporting real data; a game
+  // that never writes the field at all is a wiring gap.
+  const present = (doc: Record<string, unknown>) =>
+    Object.prototype.hasOwnProperty.call(doc, 'arrived')
+
+  it('a group that never wrote arrived[] reports NO DATA', () => {
+    expect(present({ player_participants: ['a'] })).toBe(false)
+  })
+
+  it('a group that wrote an EMPTY arrived[] reports DATA — nobody came', () => {
+    expect(present({ player_participants: ['a'], arrived: [] })).toBe(true)
+  })
+
+  it('a group with arrivals reports data', () => {
+    expect(present({ player_participants: ['a'], arrived: ['a'] })).toBe(true)
+  })
+})

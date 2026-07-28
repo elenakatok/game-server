@@ -3,8 +3,9 @@ import {
   moveOccupant, ungroupOccupant, fillWithBots, chunkIntoGroups,
   leadOf, isFull, freeSeats, canAcceptHuman,
   checkSeatingInvariants, populationOf,
-  type SeatGroup, type SeatOccupant, type SeatingPlan,
+  type SeatingPlan,
 } from '../../src/online/seatOps'
+import type { SeatGroup, SeatOccupant } from '../../src/online/types'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // THE MOVE/UNGROUP INVARIANTS — the operations that corrupt data if they are wrong.

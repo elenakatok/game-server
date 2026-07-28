@@ -66,6 +66,17 @@ export function makeGetOnlineReport(ctx: OnlineContext, opts: OnlineReportOption
       })
     }
 
+    // ── §2.1.1 item B ────────────────────────────────────────────────────────
+    // Nothing in the shared machinery WRITES arrived[]; the game does. So a game
+    // that forgets produces a report showing everyone as never-arrived, which reads
+    // as data — a finding about the class — rather than as the bug it is. Nobody
+    // investigates a finding.
+    //
+    // So the report distinguishes them: if NO group carries an `arrived` field at
+    // all, arrival data is MISSING, and every student's `arrived` is null rather
+    // than false. Absence of the field, not emptiness of the set: a game that writes
+    // `arrived: []` and genuinely had nobody turn up reports false, correctly.
+    let arrivalDataPresent = false
     const arrivedByGroup = new Map<string, Set<string>>()
     const flagByGroup = new Map<string, { stale: boolean; reporterName: string | null }>()
     const botsByGroup = new Map<string, boolean>()
@@ -77,6 +88,7 @@ export function makeGetOnlineReport(ctx: OnlineContext, opts: OnlineReportOption
       const started = adapter.hasStarted(doc)
       const prog = progress.get(gdoc.id) ?? { category: 'never_started' as const, rounds: 0 }
 
+      if (Object.prototype.hasOwnProperty.call(doc, 'arrived')) arrivalDataPresent = true
       arrivedByGroup.set(gdoc.id, new Set((doc['arrived'] as string[] | undefined) ?? []))
       if (flag) {
         flagByGroup.set(gdoc.id, { stale: started, reporterName: (flag['reporter_name'] as string) ?? null })
@@ -118,7 +130,8 @@ export function makeGetOnlineReport(ctx: OnlineContext, opts: OnlineReportOption
           name: m.name,
           groupNumber: gid ? (numberById.get(gid) ?? null) : null,
           category: (gid ? (prog?.category ?? 'never_started') : 'no_group') as GroupCategory | 'no_group',
-          arrived: gid ? (arrivedByGroup.get(gid)?.has(p.id) ?? false) : false,
+          // null = we cannot say; false = we can, and they did not.
+          arrived: arrivalDataPresent ? (gid ? (arrivedByGroup.get(gid)?.has(p.id) ?? false) : false) : null,
           lastLoginMs: m.lastLoginMs,
           flagged: gid ? flagByGroup.has(gid) : false,
           playedWithBots: gid ? (botsByGroup.get(gid) ?? false) : false,
@@ -131,6 +144,12 @@ export function makeGetOnlineReport(ctx: OnlineContext, opts: OnlineReportOption
     return {
       ok: true as const,
       absence_label: opts.absenceLabel ?? 'Missed',
+      /**
+       * FALSE means this game is not writing arrived[] — a wiring bug, not a class
+       * with poor attendance. The UI must say so rather than rendering "no" for
+       * everyone.
+       */
+      arrival_data_present: arrivalDataPresent,
       counts: {
         finished: groups.filter((g) => g.category === 'finished').length,
         inProgress: groups.filter((g) => g.category === 'in_progress').length,
