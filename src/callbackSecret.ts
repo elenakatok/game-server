@@ -72,7 +72,23 @@ export function callbackSecretValue(name: string, devOverride?: string): string 
   return devOverride ?? process.env[name] ?? ''
 }
 
-// Register the DEFAULT at module load, exactly as the three factories used to. This
-// preserves the timing the Firebase CLI relies on to discover the parameter for games
-// that do not override it.
-callbackSecretParam()
+// ── NO MODULE-LOAD REGISTRATION HERE, AND THAT IS THE POINT ───────────────────
+//
+// There used to be a bare `callbackSecretParam()` on this line, registering the DEFAULT
+// name unconditionally on import "to preserve the timing the CLI relies on". It was
+// unnecessary and actively harmful:
+//
+//   • UNNECESSARY, because every game calls `makeFinalizeInstance(def)` and friends at
+//     module load in its own index.ts, and each factory calls `callbackSecretParam(...)`
+//     with the resolved name. A game that does not override therefore registers
+//     CLASSROOM_CALLBACK_SECRET through the normal path anyway. (Regression-tested.)
+//
+//   • HARMFUL, because a game that DOES override then declared BOTH names. The Firebase
+//     CLI enumerates every param DECLARED in the loaded module graph — not only those a
+//     function binds — so it found a secret that does not exist in that game's project
+//     and interactively offered to create one. Answering would have minted an orphan no
+//     function reads.
+//
+// ⚠ DO NOT REINTRODUCE A MODULE-LOAD `defineSecret` HERE. What a resolver CHOOSES and
+// what a bundle DECLARES are different questions, and only the second is what the CLI
+// acts on.
