@@ -66,6 +66,30 @@ export type ConfigFieldDef =
   | { key: string; kind: 'string';      default: string }
   | { key: string; kind: 'positiveInt'; default: number }
   | { key: string; kind: 'url';         default: string }
+  /**
+   * A finite decimal, for probabilities, rates and prices.
+   *
+   * ⚠ NOT `OutcomeSchema`'s 'decimal'. That one describes a field a STUDENT submits on
+   * an outcome form; this one describes a field an INSTRUCTOR edits in Settings. Same
+   * word, different type, different validator — do not reach for the other one.
+   *
+   * `min`/`max` are INCLUSIVE and both optional; a probability declares `{ min: 0,
+   * max: 1 }`. `step` is a rounding quantum applied AFTER range checking, so a value
+   * within range is snapped rather than rejected — 0.6500000000000001 becomes 0.65
+   * instead of failing, which is what a float round-trip through Firestore and a text
+   * input actually produces.
+   */
+  | {
+      key: string
+      kind: 'decimal'
+      default: number
+      /** Inclusive lower bound. */
+      min?: number
+      /** Inclusive upper bound. */
+      max?: number
+      /** Rounding quantum, e.g. 0.01. Applied after range checking. */
+      step?: number
+    }
 
 export interface GameDefinition {
   // ── identity & roles ──────────────────────────────────────────────────────

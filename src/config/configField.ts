@@ -23,7 +23,22 @@ export function readConfigField(field: ConfigFieldDef, stored: unknown): string 
     case 'url':
       // Empty string is treated as "not set" — blank cannot mask a declared default.
       return (typeof stored === 'string' && stored !== '') ? stored : field.default
+
+    case 'decimal':
+      // Range is NOT re-checked on read. A stored value got through validateWriteField,
+      // and silently swapping a persisted setting for the default at read time would
+      // change a running game's payoffs with nothing on screen to explain it. Only a
+      // non-finite value — which cannot come from a successful write — falls back.
+      return (typeof stored === 'number' && Number.isFinite(stored)) ? stored : field.default
   }
+}
+
+/** Snap to the declared quantum, then clear binary-float dust (0.30000000000000004). */
+function snap(value: number, step: number | undefined): number {
+  if (step === undefined || step <= 0) return value
+  const snapped = Math.round(value / step) * step
+  const dp = Math.max(0, (String(step).split('.')[1] ?? '').length)
+  return Number(snapped.toFixed(dp))
 }
 
 /**
@@ -46,6 +61,24 @@ export function validateWriteField(field: ConfigFieldDef, value: unknown): strin
         !Number.isInteger(value)
       ) throw new HttpsError('invalid-argument', `${field.key} must be a positive integer`)
       return value
+    }
+
+    case 'decimal': {
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        throw new HttpsError('invalid-argument', `${field.key} must be a number`)
+      }
+      // ⚠ VALIDATED HERE, SERVER-SIDE, AND NOT ONLY IN THE SETTINGS PAGE. A settings
+      // form is a convenience, not a trust boundary: updateGameConfig is a public
+      // callable and anyone with an instructor session can post to it directly.
+      if (field.min !== undefined && value < field.min) {
+        throw new HttpsError('invalid-argument',
+          `${field.key} must be at least ${field.min} (got ${value})`)
+      }
+      if (field.max !== undefined && value > field.max) {
+        throw new HttpsError('invalid-argument',
+          `${field.key} must be at most ${field.max} (got ${value})`)
+      }
+      return snap(value, field.step)
     }
 
     case 'url': {
