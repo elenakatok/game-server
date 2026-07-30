@@ -3,7 +3,7 @@ import * as admin from 'firebase-admin'
 import { FieldValue } from 'firebase-admin/firestore'
 import { extractStudentOnCallIds } from '../auth/studentOnCallAuth'
 import type { GameDefinition } from '../GameDefinition'
-import { parsePrepTextQuestions, mergeWithDefaults } from '../config/prepTextQuestions'
+import { resolveQuestions } from '../config/prepTextQuestions'
 import { calcKCScore } from './calcKCScore'
 
 /**
@@ -84,9 +84,7 @@ export function makeSubmitKnowledgeCheck(def: GameDefinition) {
     if (result.correct && !result.alreadyCompleted) {
       const configSnap = await instanceRef.collection('config').doc('main').get()
       const cd = (configSnap.data() ?? {}) as Record<string, unknown>
-      const defaults = def.prepDefaults ?? []
-      const stored = parsePrepTextQuestions(cd.prep_text_questions) ?? defaults
-      const merged = mergeWithDefaults(stored, defaults)
+      const merged = resolveQuestions(def, cd)
       const staticKCQuestions = merged.filter(q =>
         q.category === 'knowledge_check' &&
         q.grading === 'static' &&

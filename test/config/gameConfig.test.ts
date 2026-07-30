@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { HttpsError } from 'firebase-functions/v2/https'
-import { parsePrepTextQuestions, mergeWithDefaults, validateQuestionSemantics, validateKCGate } from '../../src/config/prepTextQuestions'
+import { parsePrepTextQuestions, mergeWithDefaults, resolveQuestions, validateQuestionSemantics, validateKCGate } from '../../src/config/prepTextQuestions'
 import { readConfigField, validateWriteField } from '../../src/config/configField'
 import { extractInstructorGameId } from '../../src/auth/instructorAuth'
 import type { PrepTextQuestion, ConfigFieldDef } from '../../src/GameDefinition'
@@ -266,6 +266,67 @@ describe('mergeWithDefaults', () => {
   })
   it('returns an empty array when stored is empty and defaults have no system questions', () => {
     expect(mergeWithDefaults([], [NON_SYSTEM_Q])).toEqual([])
+  })
+})
+
+// ── resolveQuestions ──────────────────────────────────────────────────────────
+//
+// The one resolution path all six read sites share. What is asserted here is the
+// PRECEDENCE, because that is the whole reason the function exists: a config-derived
+// bank must beat the static one, and the instructor's stored edits must beat both.
+
+describe('resolveQuestions', () => {
+  it('uses the static prepDefaults when no derived bank is declared', () => {
+    const result = resolveQuestions({ prepDefaults: [SYSTEM_Q] }, {})
+    expect(result.map(q => q.field)).toEqual([SYSTEM_Q.field])
+  })
+
+  it('prefers prepDefaultsFor over prepDefaults, and passes it the instance config', () => {
+    const derived: PrepTextQuestion = { ...SYSTEM_Q, prompt: 'derived' }
+    let sawConfig: Record<string, unknown> | null = null
+    const result = resolveQuestions(
+      {
+        prepDefaults: [SYSTEM_Q],
+        prepDefaultsFor: (cd) => { sawConfig = cd; return [derived] },
+      },
+      { unit_cost: 4 },
+    )
+    expect(result[0].prompt).toBe('derived')
+    expect(sawConfig).toEqual({ unit_cost: 4 })
+  })
+
+  it('re-derives per call, so a config edit moves the answer key', () => {
+    // The staleness this hook exists for: same def, two instances, two answer keys.
+    const def = {
+      prepDefaultsFor: (cd: Record<string, unknown>) => ([{
+        ...SYSTEM_Q, system: false, grading: 'static' as const,
+        correct_value: String(cd['unit_cost']),
+      }]),
+    }
+    expect(resolveQuestions(def, { unit_cost: 1 })[0].correct_value).toBe('1')
+    expect(resolveQuestions(def, { unit_cost: 4 })[0].correct_value).toBe('4')
+  })
+
+  it('the instructor\'s stored list still wins over a derived default', () => {
+    // Hand-edited text is the instructor's, not the deriver's — same rule as before.
+    const stored = [{ ...SYSTEM_Q, prompt: 'the instructor typed this' }]
+    const result = resolveQuestions(
+      { prepDefaultsFor: () => [{ ...SYSTEM_Q, prompt: 'derived' }] },
+      { prep_text_questions: stored },
+    )
+    expect(result[0].prompt).toBe('the instructor typed this')
+  })
+
+  it('still injects missing SYSTEM questions from the derived bank', () => {
+    const result = resolveQuestions(
+      { prepDefaultsFor: () => [SYSTEM_Q] },
+      { prep_text_questions: [{ ...NON_SYSTEM_Q, order: 9 }] },
+    )
+    expect(result.map(q => q.field)).toContain(SYSTEM_Q.field)
+  })
+
+  it('returns an empty array when the game declares no defaults at all', () => {
+    expect(resolveQuestions({}, {})).toEqual([])
   })
 })
 

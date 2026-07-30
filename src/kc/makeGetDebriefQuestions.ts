@@ -2,7 +2,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https'
 import * as admin from 'firebase-admin'
 import { extractStudentOnCallIds } from '../auth/studentOnCallAuth'
 import type { GameDefinition } from '../GameDefinition'
-import { parsePrepTextQuestions, mergeWithDefaults } from '../config/prepTextQuestions'
+import { resolveQuestions } from '../config/prepTextQuestions'
 
 /**
  * Returns the visible, ordered debrief questions for a student's session.
@@ -35,9 +35,7 @@ export function makeGetDebriefQuestions(def: GameDefinition) {
     }
 
     const cd = (configSnap.data() ?? {}) as Record<string, unknown>
-    const defaults = def.prepDefaults ?? []
-    const stored = parsePrepTextQuestions(cd.prep_text_questions) ?? defaults
-    const merged = mergeWithDefaults(stored, defaults)
+    const merged = resolveQuestions(def, cd)
 
     const visible = merged
       .filter(q =>

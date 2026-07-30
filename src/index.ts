@@ -39,6 +39,7 @@ export { makeUpdateGameConfig } from './config/makeUpdateGameConfig'
 export {
   parsePrepTextQuestions,
   mergeWithDefaults,
+  resolveQuestions,
   validateQuestionSemantics,
   validateKCGate,
 } from './config/prepTextQuestions'

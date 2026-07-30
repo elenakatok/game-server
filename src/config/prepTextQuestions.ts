@@ -1,6 +1,28 @@
-import type { MCOption, PrepTextQuestion } from '../GameDefinition'
+import type { GameDefinition, MCOption, PrepTextQuestion } from '../GameDefinition'
 
 export type { PrepTextQuestion }
+
+/** The two ways a game supplies its default question bank. See `resolveQuestions`. */
+export type QuestionSource = Pick<GameDefinition, 'prepDefaults' | 'prepDefaultsFor'>
+
+/**
+ * The question bank for one instance: config-derived defaults if the game declares them,
+ * the static bank otherwise, overlaid with the instructor's stored edits.
+ *
+ * ⚠ THIS EXISTS TO BE THE ONLY COPY OF THESE THREE LINES. Six call sites read the bank —
+ * four KC/prep functions plus getGameConfig and updateGameConfig — and they must resolve
+ * it IDENTICALLY or the Settings page shows one question and the grader grades another.
+ * They were six hand-copied triples; adding `prepDefaultsFor` to five of six would have
+ * been an invisible, wrong-in-one-place change, so the triple lives here now.
+ */
+export function resolveQuestions(
+  def: QuestionSource,
+  configData: Record<string, unknown>,
+): PrepTextQuestion[] {
+  const defaults = def.prepDefaultsFor?.(configData) ?? def.prepDefaults ?? []
+  const stored = parsePrepTextQuestions(configData['prep_text_questions']) ?? defaults
+  return mergeWithDefaults(stored, defaults)
+}
 
 /**
  * Parses a raw Firestore value into a validated PrepTextQuestion array.

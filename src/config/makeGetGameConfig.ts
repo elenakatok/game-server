@@ -3,7 +3,7 @@ import * as admin from 'firebase-admin'
 import { extractInstructorGameId } from '../auth/instructorAuth'
 import type { GameDefinition } from '../GameDefinition'
 import { readConfigField } from './configField'
-import { parsePrepTextQuestions, mergeWithDefaults } from './prepTextQuestions'
+import { resolveQuestions } from './prepTextQuestions'
 
 /**
  * Returns an onCall function that reads the full game config for a Settings page.
@@ -37,9 +37,7 @@ export function makeGetGameConfig(def: GameDefinition) {
         result[field.key] = readConfigField(field, cd[field.key])
       }
 
-      const defaults = def.prepDefaults ?? []
-      const stored = parsePrepTextQuestions(cd['prep_text_questions']) ?? defaults
-      result['prep_text_questions'] = mergeWithDefaults(stored, defaults)
+      result['prep_text_questions'] = resolveQuestions(def, cd)
 
       return result
     } catch (err) {

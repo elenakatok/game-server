@@ -3,7 +3,7 @@ import * as admin from 'firebase-admin'
 import { extractInstructorGameId } from '../auth/instructorAuth'
 import type { GameDefinition } from '../GameDefinition'
 import { validateWriteField, readConfigField } from './configField'
-import { parsePrepTextQuestions, mergeWithDefaults, validateQuestionSemantics } from './prepTextQuestions'
+import { parsePrepTextQuestions, resolveQuestions, validateQuestionSemantics } from './prepTextQuestions'
 
 /**
  * Returns an onCall function that writes a partial patch to game_instances/{id}/config/main.
@@ -70,9 +70,7 @@ export function makeUpdateGameConfig(def: GameDefinition) {
         result[field.key] = readConfigField(field, cd[field.key])
       }
 
-      const defaults = def.prepDefaults ?? []
-      const stored = parsePrepTextQuestions(cd['prep_text_questions']) ?? defaults
-      result['prep_text_questions'] = mergeWithDefaults(stored, defaults)
+      result['prep_text_questions'] = resolveQuestions(def, cd)
 
       return result
     } catch (err) {

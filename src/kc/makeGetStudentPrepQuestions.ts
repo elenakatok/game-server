@@ -2,7 +2,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https'
 import * as admin from 'firebase-admin'
 import { extractStudentOnCallIds } from '../auth/studentOnCallAuth'
 import type { GameDefinition } from '../GameDefinition'
-import { parsePrepTextQuestions, mergeWithDefaults } from '../config/prepTextQuestions'
+import { resolveQuestions } from '../config/prepTextQuestions'
 import { djb2Hash, seededShuffle } from './shuffle'
 
 /**
@@ -35,10 +35,8 @@ export function makeGetStudentPrepQuestions(def: GameDefinition) {
     }
 
     const cd = (configSnap.data() ?? {}) as Record<string, unknown>
-    const defaults = def.prepDefaults ?? []
-    // Fall back to full defaults (including non-system questions) on fresh instances.
-    const stored = parsePrepTextQuestions(cd.prep_text_questions) ?? defaults
-    const merged = mergeWithDefaults(stored, defaults)
+    // Falls back to full defaults (including non-system questions) on fresh instances.
+    const merged = resolveQuestions(def, cd)
 
     const visible = merged
       .filter(q =>

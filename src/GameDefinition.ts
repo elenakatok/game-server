@@ -219,6 +219,31 @@ export interface GameDefinition {
    */
   prepDefaults?: PrepTextQuestion[]
 
+  /**
+   * CONFIG-DERIVED defaults, computed per request from the instance's own config/main.
+   * Takes precedence over the static `prepDefaults` wherever defaults are read.
+   *
+   * ⚠ THIS EXISTS BECAUSE `prepDefaults` IS BUILT AT MODULE LOAD, AND A KNOWLEDGE CHECK
+   * THAT ENCODES A PAYOFF TABLE CANNOT BE. A game whose Settings page lets the instructor
+   * edit the numbers a graded question asks about — a payoff matrix, a price, a
+   * probability — has a static question bank that goes STALE the moment those numbers are
+   * edited: the KC renders, the student answers correctly from the table in front of them,
+   * and the server marks it wrong against the defaults the bundle was built with. Nothing
+   * errors, and the only symptom is a class-wide dip in one question's score.
+   *
+   * Declare this and the question bank is recomputed from the live config on every read —
+   * so the SAME derivation serves and grades, which is the property that makes the drift
+   * unrepresentable rather than merely unlikely. (Repeated PD and Pricing get this by
+   * being single-player games that own their own resolver; this is the shared-factory
+   * equivalent.)
+   *
+   * Additive and OPT-IN: absent, every read path behaves exactly as before.
+   *
+   * ⚠ IT MUST BE PURE AND CHEAP — it runs inside request handlers, including a
+   * transaction, with no I/O available to it. Derive from the passed config only.
+   */
+  prepDefaultsFor?: (configData: Record<string, unknown>) => PrepTextQuestion[]
+
   // ── student info page (BU-2b) ─────────────────────────────────────────────
   /**
    * Per-role info link declarations for the student info page.
