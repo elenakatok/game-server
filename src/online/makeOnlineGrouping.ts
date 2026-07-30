@@ -137,6 +137,19 @@ export function makeGroupParticipantsOnline(ctx: OnlineContext, opts: GroupingOp
 /**
  * Stamp last_login_at, and denormalise it onto the group so the instructor panel —
  * which reads the GROUP doc — shows login status without a second fetch.
+ *
+ * ALSO HANDS BACK clock_mode, AND THAT IS LOAD-BEARING. It is the student UI's only way
+ * to learn whether it is in an online or a classroom session: config/main is server-only
+ * readable, so the client cannot look for itself. Every routeToPhase reads this one field
+ * and falls back to CLASSROOM routing when it is missing — which is what happened while
+ * this factory returned only { ok, group_id }. An online student was then sent down the
+ * classroom join path: "only continue if you are in class right now" → the attendance-code
+ * screen → "no attendance code has been generated yet", for a code that cannot exist in a
+ * session with no class to display one at. Crisis was unaffected only because it kept a
+ * LOCAL recordLogin that always returned clock_mode; this brings the shared factory into
+ * line with it, so every game that consumes it routes online students correctly.
+ *
+ * group_id is still returned — it was never wrong, just insufficient.
  */
 export function makeRecordLogin(ctx: OnlineContext) {
   return onCall(corsOf(ctx), async (request: CallableRequest) => {
@@ -144,7 +157,10 @@ export function makeRecordLogin(ctx: OnlineContext) {
     const { participantId, gameInstanceId } = await extractStudentOnCallIds(data, isEmu(), authHeaderOf(request))
 
     const pRef = participantsRef(gameInstanceId).doc(participantId)
-    const pSnap = await pRef.get()
+    const [pSnap, configSnap] = await Promise.all([
+      pRef.get(),
+      instanceRef(gameInstanceId).collection('config').doc('main').get(),
+    ])
     await pRef.set({ last_login_at: FieldValue.serverTimestamp() }, { merge: true })
 
     const groupId = (pSnap.data()?.['group_id'] as string | undefined) ?? null
@@ -154,7 +170,9 @@ export function makeRecordLogin(ctx: OnlineContext) {
         .set({ member_logins: { [participantId]: FieldValue.serverTimestamp() } }, { merge: true })
         .catch(() => { /* cosmetic; the participant stamp is the source of truth */ })
     }
-    return { ok: true as const, group_id: groupId }
+    // Same default as every other clock_mode reader: absent/unset means CLASSROOM.
+    const clockMode = String(configSnap.data()?.['clock_mode'] ?? 'on')
+    return { ok: true as const, group_id: groupId, clock_mode: clockMode }
   })
 }
 
