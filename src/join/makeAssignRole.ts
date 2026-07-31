@@ -1,7 +1,7 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https'
 import * as admin from 'firebase-admin'
 import { FieldValue } from 'firebase-admin/firestore'
-import { roleKeys } from '@mygames/game-engine'
+import { roleKeys, fieldFor } from '@mygames/game-engine'
 import { verifyClassroomToken } from '../auth/verifyToken'
 import type { GameDefinition } from '../GameDefinition'
 
@@ -28,7 +28,7 @@ export function pickRole(
   return minRole
 }
 
-async function doAssignRole(
+export async function doAssignRole(
   gameInstanceId: string,
   participantId: string,
   roleKeyList: string[],
@@ -36,12 +36,9 @@ async function doAssignRole(
   displayName?: string,
 ): Promise<string> {
   const db = admin.firestore()
-  const participantRef = db
-    .collection('game_instances').doc(gameInstanceId)
-    .collection('participants').doc(participantId)
-  const countsRef = db
-    .collection('game_instances').doc(gameInstanceId)
-    .collection('role_counts').doc('totals')
+  const instanceRef = db.collection('game_instances').doc(gameInstanceId)
+  const participantRef = instanceRef.collection('participants').doc(participantId)
+  const countsRef = instanceRef.collection('role_counts').doc('totals')
 
   return db.runTransaction(async (tx) => {
     const [participantSnap, countsSnap] = await Promise.all([
@@ -50,15 +47,32 @@ async function doAssignRole(
     ])
 
     const existing = participantSnap.data()
+    // Short-circuit preserved: a role, once assigned, is never re-assigned — so the
+    // back-fill below runs exactly once, at first role acquisition.
     if (existing?.role) return existing.role as string
+
+    // Role-timing back-fill target (ROLE_TIMING_BACKFILL_CHECK.md §5): a participant already
+    // PLACED into a group (group_id set) before they had a role — the move/ungroup panel's
+    // "placed-then-role" case. In the normal match-first flow there is no group_id here, so
+    // groupRef stays null and nothing extra is read or written (the path is byte-for-byte
+    // unchanged for those callers). Read the group INSIDE the txn, before any write (Firestore
+    // requires all reads first) — so the group_id is known from participantSnap above.
+    const groupId = (existing?.['group_id'] as string | undefined) ?? null
+    const groupRef = groupId ? instanceRef.collection('groups').doc(groupId) : null
+    const groupSnap = groupRef ? await tx.get(groupRef) : null
+    const gdata = groupSnap?.exists ? (groupSnap.data() ?? {}) : null
+    // A group left with no lead (rare) gets this newly-rolled member as its lead, mirroring
+    // matching/moveSeat which always leave a group with a lead.
+    const becomesLead = gdata != null && !gdata['lead_participant_id']
 
     const counts = (countsSnap.data() ?? {}) as Record<string, number>
     const role = pickRole(roleKeyList, counts, composition)
     const now = FieldValue.serverTimestamp()
 
     if (participantSnap.exists) {
-      tx.update(participantRef, { role, role_assigned_at: now })
+      tx.update(participantRef, { role, role_assigned_at: now, ...(becomesLead ? { is_lead: true } : {}) })
     } else {
+      // A new participant doc has no group_id, so this branch never back-fills.
       tx.set(participantRef, {
         participant_id: participantId,
         game_instance_id: gameInstanceId,
@@ -69,6 +83,22 @@ async function doAssignRole(
       })
     }
     tx.set(countsRef, { [role]: (counts[role] ?? 0) + 1 }, { merge: true })
+
+    // ── Back-fill the group's role array ──────────────────────────────────────────
+    // The student was placed while role-less, so writeMembership/newGroupFields filed them
+    // into NO <role>_participants array. Now that they have a role, add them there so they
+    // render on the member-list surfaces (GroupReveal / Results / GroupMembersPanel all read
+    // these arrays). arrayUnion is idempotent + concurrency-safe: a re-run or a racing double
+    // never double-adds, and a member already present (the already-role'd-then-moved case,
+    // which never reaches here anyway) is a no-op.
+    if (gdata != null) {
+      const patch: Record<string, unknown> = {
+        [fieldFor(role, 'participants')]: FieldValue.arrayUnion(participantId),
+      }
+      if (becomesLead) patch['lead_participant_id'] = participantId
+      tx.update(groupRef!, patch)
+    }
+
     return role
   })
 }
