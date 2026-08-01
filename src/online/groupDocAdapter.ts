@@ -160,6 +160,28 @@ function denormalised(occupants: SeatOccupant[]): GroupDoc {
 
 // ── negotiation family (DEFINED, no consumer until late September) ─────────────
 
+/** Optional per-game customisation of the negotiation adapter. */
+export interface NegotiationAdapterOptions {
+  /**
+   * Override the per-group "has this group started" lock — the predicate that freezes a
+   * group for moves in and out.
+   *
+   * DEFAULT (five single-round games): `negotiation_started_at != null || status ==='negotiating'`.
+   * That is correct for a game that negotiates ONCE: `negotiation_started_at` is stamped when
+   * the group starts and never re-stamped.
+   *
+   * ⚠ BAXTER (the one multi-round consumer) MUST override this. Baxter re-opens each group for
+   * a new round via `reopenGroup`, which RE-STAMPS `negotiation_started_at` and never clears it
+   * (reopenGroup.ts). So the default returns `true` forever after the first 1978 negotiation,
+   * permanently locking every baxter group — including the legitimate between-rounds window.
+   * Baxter's `status`, by contrast, cycles per round
+   * (matched→negotiating→reporting→completed→[reopen]→negotiating), so it supplies a
+   * status-based override here. Keeping this an OPT-IN override leaves the five default games
+   * byte-for-byte unchanged.
+   */
+  hasStarted?: (group: GroupDoc) => boolean
+}
+
 /**
  * Occupants live in one array per role. `roleKeys` comes from the game definition,
  * and an occupant's `role` decides which array it is written to — which is why
@@ -172,9 +194,18 @@ function denormalised(occupants: SeatOccupant[]): GroupDoc {
  *
  * Bots do not exist in this family: `readOccupants` reports every occupant as human,
  * and bot-fill is simply never offered for a negotiation game.
+ *
+ * `opts.hasStarted` optionally replaces the started-lock predicate (see
+ * NegotiationAdapterOptions) — used only by baxter's round-aware check; omit it and the
+ * behaviour is exactly as before.
  */
-export function makeNegotiationGroupAdapter(roleKeys: readonly string[]): GroupDocAdapter {
+export function makeNegotiationGroupAdapter(
+  roleKeys: readonly string[],
+  opts: NegotiationAdapterOptions = {},
+): GroupDocAdapter {
   const field = (role: string) => `${role}_participants`
+  const defaultHasStarted = (group: GroupDoc) =>
+    group['negotiation_started_at'] != null || group['status'] === 'negotiating'
   return {
     family: 'negotiation',
     startedField: 'negotiation_started_at',
@@ -188,8 +219,7 @@ export function makeNegotiationGroupAdapter(roleKeys: readonly string[]): GroupD
         })),
       ),
 
-    hasStarted: (group) =>
-      group['negotiation_started_at'] != null || group['status'] === 'negotiating',
+    hasStarted: opts.hasStarted ?? defaultHasStarted,
 
     writeMembership: ({ occupants, lead }) => {
       const patch: GroupDoc = { lead_participant_id: lead }

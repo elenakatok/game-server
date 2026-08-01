@@ -161,6 +161,47 @@ describe('negotiation adapter (DEFINED, no consumer until late September)', () =
   })
 })
 
+// ── round-aware started override (baxter is the one consumer) ─────────────────
+
+describe('negotiation adapter — optional hasStarted override', () => {
+  const doc = { winemaster_participants: ['w1'], home_base_participants: ['h1'] }
+
+  it('with no override, the DEFAULT lock is unchanged (five single-round games)', () => {
+    const a = makeNegotiationGroupAdapter(['winemaster', 'home_base'])
+    expect(a.hasStarted(doc)).toBe(false)
+    expect(a.hasStarted({ ...doc, negotiation_started_at: 'T' })).toBe(true)
+    expect(a.hasStarted({ ...doc, status: 'negotiating' })).toBe(true)
+  })
+
+  // Baxter's status-based predicate: locked only while ACTIVELY mid-round.
+  const baxterHasStarted = (g: Record<string, unknown>) =>
+    g['status'] === 'negotiating' || g['status'] === 'reporting'
+
+  it('an override replaces the default predicate entirely', () => {
+    const a = makeNegotiationGroupAdapter(['baxter', 'union'], { hasStarted: baxterHasStarted })
+    expect(a.hasStarted({ status: 'matched' })).toBe(false)      // fresh → movable
+    expect(a.hasStarted({ status: 'negotiating' })).toBe(true)   // active → locked
+    expect(a.hasStarted({ status: 'reporting' })).toBe(true)     // deal reported, confirming → locked
+    expect(a.hasStarted({ status: 'completed' })).toBe(false)    // resolved → movable
+    expect(a.hasStarted({ status: 'deadlocked' })).toBe(false)   // degenerate day-2 → movable
+  })
+
+  it('the override does NOT permalock on the sticky re-stamped field (the whole point)', () => {
+    const a = makeNegotiationGroupAdapter(['baxter', 'union'], { hasStarted: baxterHasStarted })
+    // Baxter re-stamps negotiation_started_at every round and never clears it. The DEFAULT
+    // would return true forever; the status-based override tracks the live round instead.
+    const restamped = { negotiation_started_at: 'T', status: 'completed' }
+    expect(makeNegotiationGroupAdapter(['baxter', 'union']).hasStarted(restamped)).toBe(true)  // default: locked forever
+    expect(a.hasStarted(restamped)).toBe(false)                                                // override: between-rounds → movable
+  })
+
+  it('the override flows through toSeatGroup.started', () => {
+    const a = makeNegotiationGroupAdapter(['baxter', 'union'], { hasStarted: baxterHasStarted })
+    expect(toSeatGroup(a, 'G', { status: 'negotiating', negotiation_started_at: 'T' }).started).toBe(true)
+    expect(toSeatGroup(a, 'G', { status: 'completed', negotiation_started_at: 'T' }).started).toBe(false)
+  })
+})
+
 describe('the two families share one seat machinery', () => {
   it('the SAME move operation drives both adapters', () => {
     // The reconciliation in one test: seatOps never learns which family it is in.

@@ -98,6 +98,7 @@ export {
 export {
   makeStageGroupAdapter, makeNegotiationGroupAdapter, toSeatGroup,
   type GroupDocAdapter, type GroupDoc, type WriteMembershipInput, type NewGroupInput,
+  type NegotiationAdapterOptions,
 } from './online/groupDocAdapter'
 export { groupNumbering, type OnlineContext } from './online/context'
 export {
