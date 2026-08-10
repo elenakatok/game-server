@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calcKCScore } from '../../src/kc/calcKCScore'
+import { calcKCScore, kcScoreOrNull } from '../../src/kc/calcKCScore'
 import { djb2Hash, seededShuffle } from '../../src/kc/shuffle'
 import type { PrepTextQuestion } from '../../src/GameDefinition'
 
@@ -262,5 +262,61 @@ describe('seededShuffle — shuffle-stability proof', () => {
 
   it('single-element array → unchanged', () => {
     expect(seededShuffle(['x'], 42)).toEqual(['x'])
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// kcScoreOrNull — the empty-set answer the single-player family needs.
+//
+// ⚠⚠ THE POINT OF THIS FUNCTION IS THE ONE CASE calcKCScore ANSWERS DIFFERENTLY. Both
+// behaviours are correct for their own caller and the pair must stay apart:
+//   negotiation  gate-only role, no graded statics ⇒ 1.0  ("completed the gate")
+//   single-player instructor hid every graded question ⇒ null ("never asked")
+// A change that made these agree would break one family or the other.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('kcScoreOrNull — empty graded set is null, not 1.0', () => {
+  it('⚠⚠ returns null for an empty set, where calcKCScore returns 1.0', () => {
+    expect(kcScoreOrNull({}, [])).toBeNull()
+    // …and the difference is the whole reason it exists.
+    expect(calcKCScore({}, []).score).toBe(1.0)
+  })
+
+  it('⚠ null, not 0 — "not asked" is not "got everything wrong"', () => {
+    expect(kcScoreOrNull({ anything: 'x' }, [])).not.toBe(0)
+    expect(kcScoreOrNull({ anything: 'x' }, [])).toBeNull()
+  })
+
+  it('agrees with calcKCScore on every NON-empty set', () => {
+    const qs = [
+      { field: 'q1', correct_value: 'a' },
+      { field: 'q2', correct_value: 'b' },
+      { field: 'q3', correct_value: 'c' },
+      { field: 'q4', correct_value: 'd' },
+    ]
+    const cases: Record<string, string>[] = [
+      {},
+      { q1: 'a' },
+      { q1: 'a', q2: 'b' },
+      { q1: 'a', q2: 'b', q3: 'c', q4: 'd' },
+      { q1: 'WRONG', q2: 'b', q3: 'c', q4: 'd' },
+    ]
+    for (const answers of cases) {
+      expect(kcScoreOrNull(answers, qs)).toBe(calcKCScore(answers, qs).score)
+    }
+  })
+
+  it('a one-question set still scores 0 or 1 — the empty branch is the ONLY special case', () => {
+    const one = [{ field: 'q1', correct_value: 'a' }]
+    expect(kcScoreOrNull({ q1: 'a' }, one)).toBe(1)
+    expect(kcScoreOrNull({ q1: 'b' }, one)).toBe(0)
+  })
+
+  it('⚠ calcKCScore is UNCHANGED — the negotiation family depends on the 1.0 branch', () => {
+    // Pinned here so a later "tidy-up" that unifies the two is caught in the package
+    // rather than in thirteen production games.
+    expect(calcKCScore({}, []).score).toBe(1.0)
+    expect(calcKCScore({}, []).totalCount).toBe(0)
+    expect(calcKCScore({}, []).correctCount).toBe(0)
   })
 })
