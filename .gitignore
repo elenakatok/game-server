@@ -1,2 +1,5 @@
 node_modules
 dist
+
+# Firebase emulator logs (were committed by accident in 43805c3)
+*.log
