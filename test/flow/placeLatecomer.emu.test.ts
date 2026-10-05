@@ -194,4 +194,73 @@ d('placeLatecomer — emulator', () => {
     expect(all.filter((x) => x === 'p2')).toHaveLength(1)
     expect(all).toHaveLength(6) // a,b,c,d + p1 + p2
   })
+
+  // ── Spare split (GameDefinition.latecomerPairsWithSpare) ─────────────────────
+  const pairRoles: GameDefinition['roles'] = {
+    roles: [{ key: 'chris', label: 'Chris', short: 'C' }, { key: 'kelly', label: 'Kelly', short: 'K' }],
+  }
+  const pairDef = { roles: pairRoles, composition: { chris: 1, kelly: 1 }, isJoinable: joinableWhenMatched, latecomerPairsWithSpare: true }
+
+  async function seedPairs(
+    groups: Array<{ id: string; status: string; chris: string[]; kelly: string[] }>,
+    latecomer: { id: string; role: string },
+  ): Promise<string> {
+    const instanceId = `sp-${Date.now().toString(36)}-${seq++}`
+    const inst = db.collection('game_instances').doc(instanceId)
+    const batch = db.batch()
+    for (const g of groups) {
+      batch.set(inst.collection('groups').doc(g.id), {
+        group_id: g.id, status: g.status, lead_participant_id: g.chris[0] ?? null,
+        chris_participants: g.chris, kelly_participants: g.kelly,
+      })
+      for (const pid of g.chris) batch.set(inst.collection('participants').doc(pid), { role: 'chris', group_id: g.id, is_lead: pid === g.chris[0] })
+      for (const pid of g.kelly) batch.set(inst.collection('participants').doc(pid), { role: 'kelly', group_id: g.id, is_lead: false })
+    }
+    batch.set(inst.collection('participants').doc(latecomer.id), { role: latecomer.role })
+    await batch.commit()
+    return instanceId
+  }
+
+  it('10. the 2026-10-05 case: late Kelly + the extra Chris of a group of three → their own pair', async () => {
+    const inst = await seedPairs(
+      [{ id: 'g1', status: 'matched', chris: ['c1'], kelly: ['k1'] }, { id: 'g2', status: 'matched', chris: ['c2', 'c3'], kelly: ['k2'] }],
+      { id: 'late', role: 'kelly' },
+    )
+    const res = await placeLatecomer(pairDef, db, inst, 'late')
+    expect(res).toMatchObject({ formedNewGroup: true })
+    const late = await participant(inst, 'late'); const c3 = await participant(inst, 'c3')
+    expect(late?.group_id).toBeTruthy()
+    expect(c3?.group_id).toBe(late?.group_id)             // paired together
+    expect(c3?.is_lead).toBe(true)                        // Chris leads, as in matching
+    expect(late?.is_lead).toBe(false)
+    const ng = await group(inst, late?.group_id as string)
+    expect(ng).toMatchObject({ status: 'matched', lead_participant_id: 'c3', chris_participants: ['c3'], kelly_participants: ['late'] })
+    const g2 = await group(inst, 'g2')
+    expect(g2?.chris_participants).toEqual(['c2'])        // back to a clean pair, lead untouched
+    expect(g2?.lead_participant_id).toBe('c2')
+    expect((await group(inst, 'g1'))?.kelly_participants).toEqual(['k1']) // bystander untouched
+  })
+
+  it('11. the group of three has STARTED → no split; ordinary placement into an unstarted group', async () => {
+    const inst = await seedPairs(
+      [{ id: 'g1', status: 'matched', chris: ['c1'], kelly: ['k1'] }, { id: 'g2', status: 'negotiating', chris: ['c2', 'c3'], kelly: ['k2'] }],
+      { id: 'late', role: 'kelly' },
+    )
+    const res = await placeLatecomer(pairDef, db, inst, 'late')
+    expect('formedNewGroup' in res).toBe(false)
+    expect((await participant(inst, 'late'))?.group_id).toBe('g1')
+    expect((await group(inst, 'g2'))?.chris_participants).toEqual(['c2', 'c3']) // running group untouched
+  })
+
+  it('12. flag absent → identical to before (joins the smallest group, no new group)', async () => {
+    const inst = await seedPairs(
+      [{ id: 'g2', status: 'matched', chris: ['c2', 'c3'], kelly: ['k2'] }],
+      { id: 'late', role: 'kelly' },
+    )
+    const res = await placeLatecomer({ roles: pairRoles, isJoinable: joinableWhenMatched }, db, inst, 'late')
+    expect('formedNewGroup' in res).toBe(false)
+    expect((await participant(inst, 'late'))?.group_id).toBe('g2')
+    const groups = await db.collection('game_instances').doc(inst).collection('groups').get()
+    expect(groups.size).toBe(1)
+  })
 })

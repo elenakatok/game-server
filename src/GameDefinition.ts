@@ -296,4 +296,17 @@ export interface GameDefinition {
    * member gets only a group_id.
    */
   onPlace?: (group: DocumentData, participant: PlacementParticipant, ctx: PlaceContext) => Promise<void>
+  /**
+   * OPT-IN. Before the ordinary "smallest joinable group" placement, try to build a
+   * NEW complete group out of the latecomer plus SPARES — members sitting in joinable
+   * (not-started) groups beyond the base composition. In a 1+1 game: a latecomer Kelly
+   * and the extra Chris of a 2C+1K group become their own pair, instead of the Kelly
+   * making a second group of three somewhere else.
+   *
+   * Only when a FULL base-composition group can be formed; otherwise placement falls
+   * through unchanged. ABSENT/false → today's behaviour exactly. Meant for games whose
+   * members get nothing but a group_id (the negotiation family); `onPlace` is NOT run
+   * for a group formed this way, so do not combine the two.
+   */
+  latecomerPairsWithSpare?: boolean
 }

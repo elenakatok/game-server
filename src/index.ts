@@ -51,9 +51,12 @@ export { makeGetStudentPrepQuestions } from './kc/makeGetStudentPrepQuestions'
 export { makeSubmitKnowledgeCheck } from './kc/makeSubmitKnowledgeCheck'
 export { makeSubmitStaticKnowledgeCheckQuestion } from './kc/makeSubmitStaticKnowledgeCheckQuestion'
 
-export { makeTriggerMatching } from './flow/makeTriggerMatching'
+export { makeTriggerMatching, planMatch, type MatchPlan, type MatchCandidate } from './flow/makeTriggerMatching'
 export {
   selectPlacementGroup,
+  selectSpareSplit,
+  type SpareSource,
+  type SparePick,
   type PlacementCandidate,
   type PlacementResult,
 } from './flow/placement'

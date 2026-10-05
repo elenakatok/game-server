@@ -13,18 +13,20 @@
 // up in two groups or none. On contention Firestore retries the loser, which
 // re-reads and re-selects against the winner's committed state.
 
+import { randomUUID } from 'crypto'
 import * as admin from 'firebase-admin'
 import { FieldValue } from 'firebase-admin/firestore'
 import { roleKeys, fieldFor } from '@mygames/game-engine'
 import type { GameDefinition } from '../GameDefinition'
-import { selectPlacementGroup, type PlacementCandidate } from './placement'
+import { selectPlacementGroup, selectSpareSplit, type PlacementCandidate } from './placement'
 
 /** What placeLatecomer needs from a GameDefinition. */
-type PlacementDef = Pick<GameDefinition, 'roles' | 'isJoinable' | 'onPlace'>
+type PlacementDef = Pick<GameDefinition, 'roles' | 'isJoinable' | 'onPlace'> &
+  Partial<Pick<GameDefinition, 'composition' | 'latecomerPairsWithSpare'>>
 
 /** The chosen group's document data, or absent when no group is joinable. */
 export type PlaceLatecomerResult =
-  | { placed: admin.firestore.DocumentData }
+  | { placed: admin.firestore.DocumentData; formedNewGroup?: true }
   | { absent: true }
 
 interface GroupCandidate {
@@ -84,6 +86,58 @@ export async function placeLatecomer(
       ),
     )
     const candidates: GroupCandidate[] = infos.map((g, i) => ({ ...g, joinable: joinableFlags[i] }))
+
+    // ── SPARE SPLIT (opt-in) ───────────────────────────────────────────────
+    // Before adding the latecomer to an existing group, try to make a NEW complete
+    // group from them plus spares held by joinable groups (see GameDefinition
+    // .latecomerPairsWithSpare). All reads are already done; this only writes.
+    if (def.latecomerPairsWithSpare && def.composition) {
+      const keys = roleKeys(def.roles)
+      const joinableCands = candidates.filter((c) => c.joinable)
+      const picks = selectSpareSplit(
+        joinableCands.map((c) => ({
+          groupId: c.ref.id,
+          leadId: (c.data['lead_participant_id'] as string | undefined) ?? null,
+          membersByRole: Object.fromEntries(
+            keys.map((k) => [k, (c.data[fieldFor(k, 'participants')] as string[] | undefined) ?? []]),
+          ),
+        })),
+        keys,
+        def.composition,
+        role,
+      )
+      if (picks) {
+        const groupId = randomUUID()
+        const newRef = groupsRef.doc(groupId)
+        const membersByRole: Record<string, string[]> = Object.fromEntries(keys.map((k) => [k, [] as string[]]))
+        for (const pk of picks) membersByRole[pk.role].push(pk.participantId)
+        membersByRole[role].push(participantId)
+        // Lead: first member of the first declared role present — matching's rule.
+        const leadRole = keys.find((k) => membersByRole[k].length > 0)!
+        const lead = membersByRole[leadRole][0]
+        const groupDoc = {
+          group_id: groupId,
+          game_instance_id: gameInstanceId,
+          lead_participant_id: lead,
+          outcome: null,
+          ...Object.fromEntries(keys.map((k) => [fieldFor(k, 'participants'), membersByRole[k]])),
+          status: 'matched',
+          matched_at: FieldValue.serverTimestamp(),
+        }
+        tx.set(newRef, groupDoc)
+        for (const pk of picks) {
+          tx.update(groupsRef.doc(pk.groupId), {
+            [fieldFor(pk.role, 'participants')]: FieldValue.arrayRemove(pk.participantId),
+          })
+          tx.update(instanceRef.collection('participants').doc(pk.participantId), {
+            group_id: groupId,
+            is_lead: pk.participantId === lead,
+          })
+        }
+        tx.update(participantRef, { group_id: groupId, is_lead: participantId === lead })
+        return { placed: groupDoc, formedNewGroup: true as const }
+      }
+    }
 
     // ── SELECT (pure) ──────────────────────────────────────────────────────
     const forSelect: PlacementCandidate<GroupCandidate>[] = candidates.map((c) => ({

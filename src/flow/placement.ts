@@ -47,3 +47,61 @@ export function selectPlacementGroup<G>(
   const idx = Math.min(Math.floor(rng() * tied.length), tied.length - 1)
   return { placed: tied[idx].group }
 }
+
+// ── Spare split (opt-in: GameDefinition.latecomerPairsWithSpare) ────────────────
+//
+// Pure: given the joinable groups' role arrays, can the latecomer plus SPARES
+// (members beyond the base composition) form one complete new group?
+
+/** A joinable group, reduced to what the spare selector needs. */
+export interface SpareSource {
+  groupId: string
+  leadId: string | null
+  /** role key → participant ids, in stored order (extras are appended last). */
+  membersByRole: Record<string, string[]>
+}
+
+/** A member to pull out of an existing group into the new one. */
+export interface SparePick { groupId: string; participantId: string; role: string }
+
+/**
+ * Pick the spares that, with a latecomer of `latecomerRole`, make one complete
+ * base-composition group. Returns null when that is not possible — the caller then
+ * places the latecomer the ordinary way.
+ *
+ * A group gives up only its SURPLUS over the base composition for that role, so no
+ * source group is ever left short; its lead is never taken; and spares are taken
+ * from the END of the role array (where matching appended its extras), from the
+ * groups with the largest surplus first.
+ */
+export function selectSpareSplit(
+  sources: SpareSource[],
+  roleKeyList: string[],
+  composition: Record<string, number>,
+  latecomerRole: string,
+): SparePick[] | null {
+  if (!roleKeyList.includes(latecomerRole)) return null
+  const picks: SparePick[] = []
+  for (const role of roleKeyList) {
+    const base = composition[role] ?? 1
+    let need = base - (role === latecomerRole ? 1 : 0)
+    if (need <= 0) continue
+    const offers = sources
+      .map(g => {
+        const ids = (g.membersByRole[role] ?? []).filter(id => id !== g.leadId)
+        const surplus = Math.min((g.membersByRole[role] ?? []).length - base, ids.length)
+        return { g, spare: surplus > 0 ? ids.slice(ids.length - surplus) : [] }
+      })
+      .filter(o => o.spare.length > 0)
+      .sort((a, b) => b.spare.length - a.spare.length)
+    for (const o of offers) {
+      while (need > 0 && o.spare.length > 0) {
+        picks.push({ groupId: o.g.groupId, participantId: o.spare.pop()!, role })
+        need--
+      }
+      if (need === 0) break
+    }
+    if (need > 0) return null
+  }
+  return picks.length > 0 ? picks : null
+}
