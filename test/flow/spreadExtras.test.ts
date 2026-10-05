@@ -100,4 +100,28 @@ describe('spreadExtras', () => {
     spreadExtras(engine, hawksKeys, hawksComp, 10)
     expect(JSON.stringify(engine)).toBe(before)
   })
+
+  // ── remnant-group games (Adirondacks: 2 per role, remnant 1 per role) ──────────
+  const adkKeys = ['gpp', 'ala', 'flp', 'fcc', 'governor', 'atb']
+  const adkRoles: GameDefinition['roles'] = { roles: adkKeys.map(k => ({ key: k, label: k, short: k[0] })) }
+  const adkComp = Object.fromEntries(adkKeys.map(k => [k, 2]))
+  const adkRemnant = { composition: Object.fromEntries(adkKeys.map(k => [k, 1])) }
+  const adkMatch = (counts: Record<string, number>) => {
+    const eligible = pool(counts)
+    const engine = matchParticipants(eligible, { roleConfig: adkRoles, composition: adkComp, perRoleCap: eligible.length, remnantGroup: adkRemnant, rng: mulberry32(11) })
+    return { engine, spread: spreadExtras(engine, adkKeys, adkComp, eligible.length) }
+  }
+
+  it('a remnant group FORMED → the engine placement is returned untouched', () => {
+    // 5 of every role = two groups of 12 + one remnant group of 6; one more gpp and ala as extras
+    const { engine, spread } = adkMatch({ gpp: 6, ala: 6, flp: 5, fcc: 5, governor: 5, atb: 5 })
+    expect(engine.length).toBe(3)
+    expect(spread).toBe(engine)
+  })
+
+  it('remnant-capable game but NO remnant group formed → extras are spread (13 + 13, not 14 + 12)', () => {
+    const { engine, spread } = adkMatch({ gpp: 5, ala: 5, flp: 4, fcc: 4, governor: 4, atb: 4 })
+    expect(sizes(engine, adkKeys)).toEqual([12, 14])
+    expect(sizes(spread, adkKeys)).toEqual([13, 13])
+  })
 })

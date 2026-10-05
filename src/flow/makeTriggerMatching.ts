@@ -181,12 +181,9 @@ export function makeTriggerMatching(def: GameDefinition) {
         ...(def.remnantGroup ? { remnantGroup: def.remnantGroup } : {}),
       })
 
-      // Spread the extras evenly (see spreadExtras). Skipped for a remnant-group game
-      // (Adirondacks): its second, smaller composition is deliberate, and "smallest
-      // group first" would pour every extra into it.
-      const rawGroups = def.remnantGroup
-        ? engineGroups
-        : spreadExtras(engineGroups, roleKeyList, def.composition, cap)
+      // Spread the extras evenly (see spreadExtras). It leaves the engine's placement
+      // alone whenever a remnant group has actually formed (Adirondacks).
+      const rawGroups = spreadExtras(engineGroups, roleKeyList, def.composition, cap)
 
       // Batch: write group docs and stamp each participant with group_id and is_lead.
       const batch = db.batch()
