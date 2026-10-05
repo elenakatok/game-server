@@ -60,6 +60,7 @@ export {
   type PlacementCandidate,
   type PlacementResult,
 } from './flow/placement'
+export { spreadExtras } from './flow/spreadExtras'
 export { placeLatecomer, type PlaceLatecomerResult } from './flow/placeLatecomer'
 export { negotiationIsJoinable } from './flow/negotiationJoinable'
 export type {
